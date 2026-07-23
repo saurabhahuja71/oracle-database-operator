@@ -5,6 +5,7 @@
 * The Software Home Location for Grid Infrastructure and Database, the ASM Disks are provisioned as Persistent Volumes using custom storage class during the initial deployment. An updated YAML file is applied to `increase` the size of the Software Home Location.
 
 **NOTE:** The `decrease` in the size of Software Home Location for an existing Oracle Restart Database is _not_ allowed.
+**NOTE:** This procedure resizes only the software-home PVC controlled by `swLocStorageSizeInGb`. Existing ASM PVC size changes are a separate workflow, and after the new size is available inside the pod you must manually grow or rebalance ASM inside the pod.
 
 This example uses `oraclerestart_prov_storage_class_before_sw_home_resize.yaml` to initially provision an Oracle Restart Database using Oracle Restart Controller with:
 

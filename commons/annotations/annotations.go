@@ -54,8 +54,12 @@ type PatchValue struct {
 // PatchAnnotations attaches the given metadata to the target object
 // The obj will be updated with the content returned by the cluster
 func PatchAnnotations(c client.Client, obj client.Object, anns map[string]string) error {
-	ctx := context.TODO()
+	return PatchAnnotationsWithContext(context.TODO(), c, obj, anns)
+}
 
+// PatchAnnotationsWithContext attaches the given metadata to the target object.
+// The obj will be updated with the content returned by the cluster.
+func PatchAnnotationsWithContext(ctx context.Context, c client.Client, obj client.Object, anns map[string]string) error {
 	latest := obj.DeepCopyObject().(client.Object)
 	if err := c.Get(ctx, client.ObjectKeyFromObject(obj), latest); err != nil {
 		return err

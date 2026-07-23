@@ -10,19 +10,19 @@ metadata:
   namespace: default
 spec:
   
-  ## Primary DB ref. This is of kind SingleInstanceDatabase
+  ## Primary database resource reference.
   primaryDatabaseRef: "sidb-sample"
 
-  ## Standby DB pod CRD Metadata Name to add this DB to DG config
+  ## Standby SingleInstanceDatabase resource names to add to the Data Guard configuration.
   standbyDatabaseRefs:
   #  - standbydatabase-sample
   #  - standbydatabase-sample1
 
-  ## Type of service . Applicable on cloud enviroments only
-  ## if loadBalService : false , service type = "NodePort" . else "LoadBalancer"
+  ## Service exposure mode for the broker service.
+  ## When false, the service is created as NodePort. When true, it is created as LoadBalancer.
   loadBalancer: false
 
-  ## Protection Mode for dg configuration . MaxAvailability or MaxPerformance
+  ## Protection mode for the Data Guard configuration. Valid values: MaxAvailability or MaxPerformance.
   protectionMode: MaxAvailability
 
   ## Specify the database SID to switchover thereby making it the primary.

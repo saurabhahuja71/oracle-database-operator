@@ -63,8 +63,10 @@
 // Help:
 //   - Issues tracker: https://github.com/oracle/oracle-database-operator/blob/main/README.md#help
 //   - Sample CRD walkthrough: https://github.com/oracle/oracle-database-operator/blob/main/docs/rac/README.md
-
 package v4
+
+// revive:disable:exported
+// API type names remain exported for CRD compatibility.
 
 type AsmDiskGroupDetails struct {
 	Name         string         `json:"name,omitempty"`
@@ -73,6 +75,10 @@ type AsmDiskGroupDetails struct {
 	Disks        []string       `json:"disks"`
 	AutoUpdate   string         `json:"autoUpdate,omitempty"`
 	StorageClass string         `json:"storageClass,omitempty"`
+	// +kubebuilder:validation:Enum=ReadWriteOnce;ReadWriteMany
+	AccessMode         string `json:"accessMode,omitempty"`
+	AsmStorageSizeInGb int    `json:"asmStorageSizeInGb,omitempty"`
+	IsKeep             bool   `json:"isKeep,omitempty"`
 }
 type AsmDiskDGTypes string
 

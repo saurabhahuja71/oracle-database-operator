@@ -1,0 +1,129 @@
+#
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: truecache
+  namespace: default
+spec:
+
+  ## DB edition
+  edition: enterprise
+
+  ## DB Type
+  createAs: truecache
+
+  ## Use a primary endpoint reachable from this cluster, for example through
+  ## peered VCNs, private DNS, or another cluster-private service endpoint.
+  primarySource:
+    connectString: "sidb-sample.internal.example.com:1521/ORCLPRD"
+    ## The trailing service name or SID must identify the primary database.
+    ## It does not need to match the True Cache SID defined below.
+    ## Optional primary CDB DB_NAME when it must be supplied explicitly.
+    ## Leave this unset when the connectString already uses the correct
+    ## reachable primary service or SID.
+    ## Set it only when True Cache must use the primary CDB DB_NAME instead of
+    ## the service or SID from the connect string.
+    # dbName: "ORCLPRD"
+
+  ## Use only alphanumeric characters for sid
+  sid: ORCLTC
+
+  ## Grouped security settings.
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      tde:
+        secretName: tde-wallet-secret
+        secretKey: tde_wallet_pwd
+    ## Optional TCPS settings for the True Cache endpoint.
+    # tcps:
+    #   enabled: true
+    #   tlsSecret: sidb-standby-tcps-tls
+
+  ## Database image details
+  image:
+    pullFrom: phx.ocir.io/<tenancy>/db-repo/oracle/database:truecache-23.26.0-ee
+    prebuiltDB: false
+    imagePullPolicy: Always
+
+  ## Optional node selector to restrict the database pod to nodes having specific labels.
+  ## For a single exact node, kubernetes.io/hostname can be used.
+  # nodeSelector:
+  #   kubernetes.io/hostname: worker-node.example
+
+  ## Storage details
+  persistence:
+    oradata:
+      size: 60Gi
+      storageClass: "oci-bv"
+      accessMode: "ReadWriteOnce"
+
+  ## Generated blob ConfigMap from the primary database.
+  ## Optional environment overrides for the True Cache container.
+  ## Uncomment to override the default primary-host script path used by
+  ## autoTCServiceRegistration.
+  # envVars:
+  #   - name: PRIMARY_TC_SERVICE_SCRIPT_PATH
+  #     value: /home/oracle/configure-primary-truecache-service.sh
+  trueCache:
+    blobConfigMapRef: sidb-sample-truecache-blob
+    blobConfigMapKey: tc_config_blob.tar.gz
+    blobMountPath: /stage/tc_config_blob.tar.gz
+    truedbUniqueName: "truecache_production_tc"
+    ## `PRIMARY_PDB_NAME:PRIMARY_SERVICE_NAME:TRUECACHE_SERVICE_NAME`
+    ## The first value is the primary PDB name.
+    ## With autoTCServiceRegistration disabled, primary-side service
+    ## creation/association stays manual. To test automatic registration,
+    ## set autoTCServiceRegistration: true and install the sample helper
+    ## script on the primary host first. On RAC primaries, also verify
+    ## externaljob.ora runs DBMS_SCHEDULER executable jobs as the Oracle
+    ## software owner or set primarySchedulerCredentialName to a
+    ## primary-side scheduler credential.
+    ## True Cache database readiness does not by itself confirm that this
+    ## primary-side service association succeeded; verify it on the primary.
+    # autoTCServiceRegistration: true
+    # primarySchedulerCredentialName: TC_ORACLE_OS_CRED
+    trueCacheServices:
+      - "APPPDB1:tpdb_primary:tpdb_cache"
+
+  ## Optional operator-managed LoadBalancer endpoint for the truecache database.
+  ## This renders a Service named <sidb-name>-lb, for example truecache-lb.
+  services:
+    endpoints:
+      - name: loadbalancer
+        type: LoadBalancer
+        ## Optional: keep the managed endpoint Service object across SIDB delete
+        ## and recreate so the existing NLB can be reused.
+        # isKeep: true
+        externalTrafficPolicy: Local
+        annotations:
+          oci.oraclecloud.com/load-balancer-type: "nlb"
+          oci-network-load-balancer.oraclecloud.com/internal: "true"
+          ## Optional: pin a stable OCI private IP for this NLB frontend.
+          # oci-network-load-balancer.oraclecloud.com/assigned-private-ipv4: "10.2.1.219"
+          oci-network-load-balancer.oraclecloud.com/subnet: "ocid1.subnet.oc1.<region>.<placeholder-subnet-ocid>"
+          external-dns.alpha.kubernetes.io/hostname: "truecache.internal.example.com"
+        tcp:
+          enabled: true
+          port: 1521
+        tcps:
+          enabled: false
+          port: 2484
+
+  ## Optional mapping for the remote primary endpoint when cluster DNS or
+  ## shared-zone visibility is not available in this cluster.
+  # hostAliases:
+  #   - ip: "10.0.2.108"
+  #     hostnames:
+  #       - "sidb-sample.internal.example.com"
+  #       - "sidb-sample"
+
+  ## Count of Database Pods. Should be 1 for True Cache.
+  replicas: 1

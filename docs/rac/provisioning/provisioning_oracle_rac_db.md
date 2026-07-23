@@ -13,6 +13,14 @@
   * Staged Software location on the worker nodes is specified by `hostSwStageLocation`. Grid Infrastructure and RDBMS Binaries are copied to this location on the worker nodes. 
   * Software location on the worker nodes is specified by `racHostSwLocation`. The GI HOME and the RDBMS HOME in the Oracle RAC Pods will be mounted using this location on the corresponding worker node.
 
+#### Database Secret Options
+* The base provisioning flow supports the standard database secret configuration used in [racdb_prov.yaml](./racdb_prov.yaml).
+* If you want to use Base64-encoded secret files, treat that as an optional variant of this same flow, not a separate prerequisite.
+* In the encoded-secret variant, `dbSecret.keyFileName` is still required for RAC validation.
+* For Base64-encoded secret files, set `dbSecret.pwdFileName: pwdfile` and omit `dbSecret.keyFileName`.
+* If the Kubernetes secret contains an OpenSSL encrypted password file such as `pwdfile.enc`, set `dbSecret.keyFileName`, `dbSecret.pwdFileName: pwdfile.enc`, `dbSecret.encryptionType: pkeyutl`, and `dbSecret.pkeyopt`.
+* See [Optional Variant: Host-based Software Locations and Base64-encoded Secrets](./provisioning_oracle_rac_encoded_secrets.md).
+
 
 ### In this example, 
   * A pre-built Oracle RAC Database slim image available on Oracle OCIR i.e. `phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim` is used. 
