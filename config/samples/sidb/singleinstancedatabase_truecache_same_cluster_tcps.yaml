@@ -1,0 +1,51 @@
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: truecache
+  namespace: default
+spec:
+  sid: ORCLTC
+  createAs: truecache
+  edition: enterprise
+  primarySource:
+    databaseRef: sidb-sample
+  trueCache:
+    blobConfigMapRef: sidb-sample-truecache-blob
+    blobConfigMapKey: tc_config_blob.tar.gz
+    blobMountPath: /stage/tc_config_blob.tar.gz
+    truedbUniqueName: truecache_tc
+    trueCacheServices:
+      - "APPPDB1:TPDB_PRIMARY:tpdb_cache"
+    autoTCServiceRegistration: true
+  security:
+    secrets:
+      admin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      tde:
+        secretName: tde-wallet-secret
+        secretKey: tde_wallet_pwd
+    tcps:
+      enabled: true
+      tlsSecret: sidb-primary-tcps-tls
+  image:
+    pullFrom: phx.ocir.io/<tenancy>/db-repo/oracle/database:truecache-23.26.0-ee
+    prebuiltDB: false
+    imagePullPolicy: Always
+  services:
+    external:
+      type: LoadBalancer
+      externalTrafficPolicy: Local
+      annotations:
+        oci.oraclecloud.com/load-balancer-type: nlb
+        oci-network-load-balancer.oraclecloud.com/internal: "true"
+        oci-network-load-balancer.oraclecloud.com/subnet: ocid1.subnet.oc1.<region>.<placeholder-subnet-ocid>
+        external-dns.alpha.kubernetes.io/hostname: truecache.internal.example.com
+      tcp:
+        enabled: true
+        port: 1521
+      tcps:
+        enabled: true
+        port: 2484
+  replicas: 1

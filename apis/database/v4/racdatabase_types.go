@@ -52,7 +52,12 @@
 
 package v4
 
+// revive:disable:exported,var-naming
+// Legacy API field/type names are preserved for backward compatibility.
+
 import (
+	"fmt"
+	"strings"
 	"sync"
 
 	corev1 "k8s.io/api/core/v1"
@@ -62,7 +67,6 @@ import (
 // RacDatabaseSpec captures desired configuration for a RAC database deployment.
 // RacDatabaseSpec captures desired configuration for a RAC database deployment.
 type RacDatabaseSpec struct {
-	InstDetails          []RacInstDetailSpec          `json:"instDetails,omitempty"`
 	ClusterDetails       *RacClusterDetailSpec        `json:"instanceDetails,omitempty"`
 	ConfigParams         *RacInitParams               `json:"configParams"`
 	AsmStorageDetails    []AsmDiskGroupDetails        `json:"asmDiskGroupDetails"`
@@ -70,8 +74,11 @@ type RacDatabaseSpec struct {
 	EnvVars              []corev1.EnvVar              `json:"envVars,omitempty"`
 	NfsStorageDetails    *corev1.NFSVolumeSource      `json:"nfsStorageDetails,omitempty"`
 	UseNfsforSwStorage   string                       `json:"useNfsforSwStorage,omitempty"`
-	StorageClass         string                       `json:"storageClass,omitempty"`
+	SwStorageClass       string                       `json:"swStorageClass,omitempty"`
 	StorageSizeInGB      int                          `json:"storageSizeInGB,omitempty"`
+	SwLocStorageSizeInGb int                          `json:"swLocStorageSizeInGb,omitempty"`
+	IsKeep               bool                         `json:"isKeep,omitempty"`
+	RacSwPrefix          string                       `json:"racSwPrefix,omitempty"`
 	Image                string                       `json:"image,omitempty"`
 	ImagePullSecret      string                       `json:"imagePullSecret,omitempty"`
 	ScriptsLocation      string                       `json:"scriptsLocation,omitempty"`
@@ -94,6 +101,54 @@ type RacDatabaseSpec struct {
 	IsFailed             bool                         `json:"isFailed,omitempty"`
 	IsManual             bool                         `json:"isManual,omitempty"`
 	SrvAccountName       string                       `json:"serviceAccountName,omitempty"`
+}
+
+// RacSwStorageMode indicates how RAC software binaries are mounted.
+type RacSwStorageMode string
+
+const (
+	RacSwStorageNone         RacSwStorageMode = "none"
+	RacSwStorageHostPath     RacSwStorageMode = "hostPath"
+	RacSwStorageExistingPVC  RacSwStorageMode = "existingPVC"
+	RacSwStorageStorageClass RacSwStorageMode = "storageClass"
+)
+
+// ResolveSwStorageMode determines the configured software storage mechanism.
+// Exactly one of clusterDetails.racHostSwLocation, racSwPrefix, or swStorageClass may be set.
+func (spec *RacDatabaseSpec) ResolveSwStorageMode() (RacSwStorageMode, error) {
+	if spec == nil {
+		return RacSwStorageNone, nil
+	}
+	hostPath := ""
+	if spec.ClusterDetails != nil {
+		hostPath = strings.TrimSpace(spec.ClusterDetails.RacHostSwLocation)
+	}
+	pvcPrefix := strings.TrimSpace(spec.RacSwPrefix)
+	storageClass := strings.TrimSpace(spec.SwStorageClass)
+
+	var configured []string
+	if hostPath != "" {
+		configured = append(configured, "clusterDetails.racHostSwLocation")
+	}
+	if pvcPrefix != "" {
+		configured = append(configured, "racSwPrefix")
+	}
+	if storageClass != "" {
+		configured = append(configured, "swStorageClass")
+	}
+	if len(configured) > 1 {
+		return RacSwStorageNone, fmt.Errorf("software storage options are mutually exclusive; set only one of %s", strings.Join(configured, ", "))
+	}
+	switch {
+	case hostPath != "":
+		return RacSwStorageHostPath, nil
+	case pvcPrefix != "":
+		return RacSwStorageExistingPVC, nil
+	case storageClass != "":
+		return RacSwStorageStorageClass, nil
+	default:
+		return RacSwStorageNone, nil
+	}
 }
 
 // RacAsmDiskDetails captures ASM disk group configuration for legacy specs.
@@ -145,35 +200,51 @@ type RacInitParams struct {
 	OneOffLocation          string           `json:"oneOffLocation,omitempty"`
 	DbOneOffIds             string           `json:"dbOneOffIds,omitempty"`
 	GridOneOffIds           string           `json:"gridOneOffIds,omitempty"`
+	SwStagePvc              string           `json:"swStagePvc,omitempty"`
+	SwStagePvcMountLocation string           `json:"swStagePvcMountLocation,omitempty"`
 }
 
-// RacInstDetailSpec describes per-instance configuration in old-style specs.
-type RacInstDetailSpec struct {
-	Name             string                       `json:"name"`
-	HostSwLocation   string                       `json:"hostSwLocation,omitempty"`
-	WorkerNode       []string                     `json:"workerNode,omitempty"`
-	EnvVars          []corev1.EnvVar              `json:"envVars,omitempty"`
-	Resources        *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` //Optional resource requiremen
-	Label            string                       `json:"label,omitempty"`
-	IsDelete         string                       `json:"isDelete,omitempty"`
-	IsForceDelete    string                       `json:"isForceDelete,omitempty"`
-	IsKeepPVC        string                       `json:"isKeepPVC,omitempty"`
-	PvcName          map[string]string            `json:"pvcName,omitempty"`
-	VipSvcName       string                       `json:"vipSvcName"`
-	NodePortSvc      []RacNodePortSvc             `json:"nodePortSvc,omitempty"`  // Port mappings for the service that is created. The service is created if
-	PortMappings     []RacPortMapping             `json:"portMappings,omitempty"` // Port mappings for the service that is created. The service is created if there is at least
-	PrivateIPDetails []PrivIpDetailSpec           `json:"privateIPDetails,omitempty"`
-	EnvFile          string                       `json:"envFile,omitempty"`
-	OnsTargetPort    *int32                       `json:"onsTargetPort,omitempty"` // Port that will be exposed on the service.
-	LsnrTargetPort   *int32                       `json:"lsnrTargetPort,omitempty"`
-	OnsLocalPort     *int32                       `json:"onsLocalPort,omitempty"` // Port that will be exposed on the service.
-	LsnrLocalPort    *int32                       `json:"lsnrLocalPort,omitempty"`
+// RacSwStageMode indicates how software staging artifacts are mounted.
+type RacSwStageMode string
+
+const (
+	RacSwStageNone        RacSwStageMode = "none"
+	RacSwStageHostPath    RacSwStageMode = "hostPath"
+	RacSwStageExistingPVC RacSwStageMode = "existingPVC"
+)
+
+// ResolveSwStageMode validates and determines software staging source.
+// swStagePvc and swStagePvcMountLocation must be set together and cannot be used with hostSwStageLocation.
+func (cfg *RacInitParams) ResolveSwStageMode() (RacSwStageMode, error) {
+	if cfg == nil {
+		return RacSwStageNone, nil
+	}
+	swStagePVC := strings.TrimSpace(cfg.SwStagePvc)
+	swStageMount := strings.TrimSpace(cfg.SwStagePvcMountLocation)
+	hostStage := strings.TrimSpace(cfg.HostSwStageLocation)
+
+	if (swStagePVC != "" || swStageMount != "") && hostStage != "" {
+		return RacSwStageNone, fmt.Errorf("hostSwStageLocation cannot be used when swStagePvc is specified")
+	}
+	if swStagePVC != "" || swStageMount != "" {
+		if swStagePVC == "" {
+			return RacSwStageNone, fmt.Errorf("swStagePvc must be specified when using PVC staging")
+		}
+		if swStageMount == "" {
+			return RacSwStageNone, fmt.Errorf("swStagePvcMountLocation must be specified when using PVC staging")
+		}
+		return RacSwStageExistingPVC, nil
+	}
+	if hostStage != "" {
+		return RacSwStageHostPath, nil
+	}
+	return RacSwStageNone, nil
 }
 
 // RacClusterDetailSpec defines cluster-wide configuration for new-style specs.
 type RacClusterDetailSpec struct {
 	NodeCount          int                `json:"nodeCount"`
-	RacHostSwLocation  string             `json:"racHostSwLocation"`
+	RacHostSwLocation  string             `json:"racHostSwLocation,omitempty"`
 	RacNodeName        string             `json:"racNodeName"`
 	BaseOnsTargetPort  int32              `json:"baseOnsTargetPort,omitempty"`
 	BaseLsnrTargetPort int32              `json:"baseLsnrTargetPort,omitempty"`
@@ -223,12 +294,14 @@ type MacvlanConfig struct {
 // files and keys.
 type RacDbPwdSecretDetails struct {
 	Name                 string `json:"name,omitempty"`        // Name of the secret.
+	SecretKey            string `json:"key,omitempty"`         // Simple secret key name.
 	KeyFileName          string `json:"keyFileName,omitempty"` // Name of the key.
 	PwdFileName          string `json:"pwdFileName,omitempty"`
 	PwdFileMountLocation string `json:"pwdFileMountLocation,omitempty"`
 	KeyFileMountLocation string `json:"keyFileMountLocation,omitempty"`
 	KeySecretName        string `json:"keySecretName,omitempty"`
 	EncryptionType       string `json:"encryptionType,omitempty"`
+	Pkeyopt              string `json:"pkeyopt,omitempty"`
 }
 
 // RACSshSecretDetails describes the secret holding SSH keys for RAC access.
@@ -303,6 +376,15 @@ type RacNodeDetailedStatus struct {
 	MountedDevices []string          `json:"mountedDevices,omitempty"`
 }
 
+// RacOperationStatus captures controller-level operation lock metadata.
+type RacOperationStatus struct {
+	Type             string      `json:"type,omitempty"`
+	Phase            string      `json:"phase,omitempty"`
+	Holder           string      `json:"holder,omitempty"`
+	TargetGeneration int64       `json:"targetGeneration,omitempty"`
+	StartedAt        metav1.Time `json:"startedAt,omitempty"`
+}
+
 // RacDatabaseStatus defines the observed state of RacDatabase
 type RacDatabaseStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
@@ -324,9 +406,8 @@ type RacDatabaseStatus struct {
 	// +patchStrategy=merge
 	// +listType=map
 	// +listMapKey=type
-	Conditions   []metav1.Condition   `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
-	InstDetails  *[]RacInstDetailSpec `json:"instDetails,omitempty"`
-	ConfigParams *RacInitParams       `json:"configParams,omitempty"`
+	Conditions   []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+	ConfigParams *RacInitParams     `json:"configParams,omitempty"`
 	// AsmDetails         *RacAsmInstanceStatus        `json:"asmDetails,omitempty"`
 	AsmDiskGroups      []AsmDiskGroupStatus    `json:"asmDiskGroups,omitempty"`
 	NfsStorageDetails  *corev1.NFSVolumeSource `json:"nfsStorageDetails,omitempty"`
@@ -352,8 +433,10 @@ type RacDatabaseStatus struct {
 	TdeWalletSecret    *RacDbPwdSecretDetails       `json:"tdeWalletSecret,omitempty"`
 	ServiceDetails     RacServiceSpec               `json:"serviceDetails,omitempty"`
 	Resources          *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` //Optional resource requiremen`
+	Operation          *RacOperationStatus          `json:"operation,omitempty"`
 	OldSpec            string                       `json:"oldSpec,omitempty"`
 	ObservedGeneration int64                        `json:"observedGeneration,omitempty"`
+	Dataguard          *ProducerDataguardStatus     `json:"dataguard,omitempty"`
 }
 
 // RacLifecycleState aliases the shared LifecycleState for RAC resources.

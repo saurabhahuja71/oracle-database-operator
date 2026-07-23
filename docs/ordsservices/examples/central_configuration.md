@@ -1,20 +1,19 @@
 # OrdsSrvs Controller: Central Configuration via central.config.url
 
-This feature introduces support for configuring ORDS instances managed by the OrdsSrvs controller using a central configuration manager. By setting the `central.config.url` attribute, OrdsSrvs retrieves global and pool-specific settings from a central endpoint that implements the ORDS Central Config Manager OpenAPI.
+This feature introduces support for configuring ORDS instances managed by the OrdsSrvs controller using a Central Configuration Server. By setting the `central.config.url` attribute, OrdsSrvs retrieves global and pool-specific settings from a central endpoint that implements the ORDS Central Config Manager OpenAPI.
 
 This document shows:
 - A minimal OrdsSrvs example that uses `central.config.url`
-- A demo central config manager implemented with Apache HTTPD in Kubernetes
+- A demo Central Configuration Server implemented with Apache HTTPD in Kubernetes
 - How to validate the setup and make REST calls against multiple pools
 
-See ORDS docs: [Configuring additional databases][ords-config-addl-dbs] (tested with 25.3):  
-https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/25.3/ordig/configuring-additional-databases.html#GUID-EEDA7256-7EDE-467B-B71D-6C7C184D982E
+This example follows the ORDS Central Configuration Server model.
 
 >Note: This example is for demo/testing only. Do not use plaintext passwords or HTTP in production.
 
 ## Overview
 
-- Central configuration endpoint:
+- Central Configuration Server endpoints:
   - Global config: `GET /central/v1/config`
   - Pool config: `GET /central/v1/config/pool/{poolName}`
 - In this example, the pool is resolved from the URL path using `security.externalMappingPathPrefix = true`.
@@ -24,7 +23,7 @@ https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/25.3/ordig/
 
 ## Prerequisites
 
-See ORDSSRVS prerequisites: [ORDSSRVS prerequisites](../README.md#prerequisites)
+See OrdsSrvs prerequisites: [OrdsSrvs prerequisites](../README.md#prerequisites)
 
 In addition to the above, you’ll need:
 - A reachable Oracle database for the pools
@@ -42,7 +41,7 @@ Create these four files locally. We will package them into a ConfigMap.
 - **central-config-httpd.conf** httpd config
 - **central-config-global.json** ORDS global configuration
 - **central-config-pool-a.json** pool-a configuration
-- **central-config-pool-b.json** pool-b configuration 
+- **central-config-pool-b.json** pool-b configuration
 
 central-config-httpd.conf:
 ```
@@ -122,7 +121,7 @@ central-config-pool-a.json:
         "db.connectionType": "customurl",
         "db.customURL": "jdbc:oracle:thin:@sidb:1521/FREEPDB1",
         "db.username": "ORDS_PUBLIC_USER",
-        "db.password": "<password>"
+        "db.password": "<database-password>"
       }
     }
   }
@@ -139,14 +138,14 @@ central-config-pool-b.json:
         "db.connectionType": "customurl",
         "db.customURL": "jdbc:oracle:thin:@sidb:1521/FREEPDB1",
         "db.username": "ORDS_PUBLIC_USER",
-        "db.password": "<password>"
+        "db.password": "<database-password>"
       }
     }
   }
 }
 ```
 
->Important: Passwords here are for testing only. 
+>Important: Passwords here are for testing only.
 
 ## Create the ConfigMap with the central config content
 
@@ -179,7 +178,7 @@ spec:
     spec:
       containers:
       - name: httpd
-        image: docker.io/library/httpd:latest
+        image: docker.io/library/httpd:<httpd-version>
         ports:
         - containerPort: 80
         volumeMounts:
@@ -248,8 +247,9 @@ metadata:
   name: ordssrvs-cc
   namespace: NAMESPACE
 spec:
-  image: container-registry.oracle.com/database/ords:latest
-  central.config.url: http://central-config-svc/central/v1/config
+  image: container-registry.oracle.com/database/ords:<ords-version>
+  globalSettings:
+    central.config.url: http://central-config-svc/central/v1/config
   serviceAccountName: ordssrvs-sa
 ```
 
@@ -329,11 +329,10 @@ curl -ik https://ordssrvs-cc:8443/ords/pool-b/ordssrvs_testcase/testcase_table/ 
 
 ## Notes and Best Practices
 
-- Replace `NAMESPACE`, and `<password>` with your values.
+- Replace `NAMESPACE`, `<database-password>`, and `<httpd-version>` with your values.
 - For production:
   - Replace HTTP with HTTPS and configure trusted certificates
   - Move credentials to Secrets or wallet-based authentication
-  - Add health and readiness probes to both central-config and ORDS
   - Apply NetworkPolicies to limit ingress/egress
   - Implement caching/failover strategies for central config availability
 

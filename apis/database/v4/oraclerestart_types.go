@@ -38,6 +38,9 @@
 
 package v4
 
+// revive:disable:exported,var-naming
+// Legacy API type names are preserved for backward compatibility.
+
 // Package v4 provides RAC webhook and type definitions aligned with docs/rac and Kubernetes guidance.
 import (
 	"sync"
@@ -216,6 +219,7 @@ type ResponseFile struct {
 // OracleRestart DB Secret Details
 type OracleRestartDbPwdSecretDetails struct {
 	Name                 string `json:"name,omitempty"`        // Name of the secret.
+	SecretKey            string `json:"key,omitempty"`         // Simple secret key name.
 	KeyFileName          string `json:"keyFileName,omitempty"` // Name of the key.
 	PwdFileName          string `json:"pwdFileName,omitempty"`
 	PwdFileMountLocation string `json:"pwdFileMountLocation,omitempty"`
