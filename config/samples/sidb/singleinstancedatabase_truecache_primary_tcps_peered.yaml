@@ -38,7 +38,7 @@ spec:
 
   ## Database image details
   image:
-    pullFrom: container-registry.oracle.com/database/enterprise:latest
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
     prebuiltDB: false
     imagePullPolicy: Always
 

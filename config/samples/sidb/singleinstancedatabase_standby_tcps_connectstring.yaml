@@ -9,7 +9,7 @@ metadata:
   # Creates a standby database using primarySource.connectString with TCPS enabled.
   # Update namespace, secrets, TLS secret, image, storage class, and connect string before applying.
   name: standbydatabase-sample
-  namespace: <operator-watched-namespace>
+  namespace: default
 spec:
   ## Use only alphanumeric characters for sid.
   sid: ORCLS
@@ -20,6 +20,9 @@ spec:
   ## Use connectString when the primary is reached through a service name,
   ## DNS name, IP address, or a different cluster/network path.
   ## Set exactly one of primarySource.databaseRef, primarySource.connectString, or primarySource.details.
+  ##
+  ## For example: In current case
+  ## connectString: "sidb-sample.default:1521/ORCL1"
   primarySource:
     connectString: "<primary-host-or-service>:1521/<primary-service-or-sid>"
 
@@ -38,9 +41,9 @@ spec:
   ## Database image details.
   ## Use an image compatible with the primary database major version.
   image:
-    pullFrom: container-registry.oracle.com/database/enterprise_ru:19
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest-19
     imagePullPolicy: IfNotPresent
-    pullSecrets: ocr-reg-cred
+    pullSecrets: oracle-container-registry-secret
 
   ## Database storage details.
   persistence:

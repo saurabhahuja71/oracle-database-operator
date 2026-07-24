@@ -16,41 +16,42 @@ This does not imply every other operator resource is `v4`-only.
 
 1. Update SIDB manifests from:
 
-```yaml
-apiVersion: database.oracle.com/v1alpha1
-kind: SingleInstanceDatabase
-```
+   ```yaml
+   apiVersion: database.oracle.com/v1alpha1
+   kind: SingleInstanceDatabase
+   ```
 
-to:
+   to:
 
-```yaml
-apiVersion: database.oracle.com/v4
-kind: SingleInstanceDatabase
-```
+   ```yaml
+   apiVersion: database.oracle.com/v4
+   kind: SingleInstanceDatabase
+   ```
 
 2. Update all automation that applies SIDB resources:
-- GitOps repos
-- CI/CD pipelines
-- Helm charts / templates
-- Generated YAML from internal tooling
+
+   - GitOps repos
+   - CI/CD pipelines
+   - Helm charts / templates
+   - Generated YAML from internal tooling
 
 3. Re-apply SIDB resources using `v4`.
 
 4. Validate cluster state:
 
-```bash
-kubectl get singleinstancedatabases -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,APIVERSION:.apiVersion'
-```
+   ```bash
+   kubectl get singleinstancedatabases -A -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,APIVERSION:.apiVersion'
+   ```
 
 5. Validate CRD version settings:
 
-```bash
-kubectl get crd singleinstancedatabases.database.oracle.com -o jsonpath='{range .spec.versions[*]}{.name}{" served="}{.served}{" storage="}{.storage}{" deprecated="}{.deprecated}{"\n"}{end}'
-```
+   ```bash
+   kubectl get crd singleinstancedatabases.database.oracle.com -o jsonpath='{range .spec.versions[*]}{.name}{" served="}{.served}{" storage="}{.storage}{" deprecated="}{.deprecated}{"\n"}{end}'
+   ```
 
-Expected:
-- `v1alpha1 served=false deprecated=true`
-- `v4 served=true storage=true`
+   Expected:
+   - `v1alpha1 served=false deprecated=true`
+   - `v4 served=true storage=true`
 
 ## Bulk Rewrite Script (Repository YAML)
 
@@ -90,9 +91,11 @@ echo "Backups created as: *.bak_sidb_v1alpha1"
 ### 1) Error: `no matches for kind "SingleInstanceDatabase" in version "database.oracle.com/v1alpha1"`
 
 Cause:
+
 - Cluster no longer serves SIDB `v1alpha1`.
 
 Resolution:
+
 - Change manifest API version to `database.oracle.com/v4`.
 - Re-apply resource.
 
@@ -109,9 +112,11 @@ rg -n 'apiVersion:\s*database\.oracle\.com/v1alpha1|kind:\s*SingleInstanceDataba
 ### 4) `v4` apply fails with webhook validation errors
 
 Cause:
+
 - `v4` admission validation is enforced.
 
 Resolution:
+
 - Fix fields reported in the validation error message.
 - Re-apply.
 
@@ -123,6 +128,7 @@ kubectl get mutatingwebhookconfiguration,validatingwebhookconfiguration -o yaml
 ```
 
 Look for:
+
 - SIDB CRD `v1alpha1` with `served: false` and `deprecated: true`
 - SIDB webhook rules targeting `v4` paths
 

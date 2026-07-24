@@ -57,7 +57,7 @@ spec:
 
   ## Database image details
   image:
-    pullFrom: container-registry.oracle.com/database/enterprise_ru:19
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest-19
     pullSecrets: oracle-container-registry-secret
 
   ## Optional node selector to restrict the database pod to nodes having specific labels.

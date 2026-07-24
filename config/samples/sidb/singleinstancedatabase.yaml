@@ -78,7 +78,6 @@ spec:
     #  tcps:
     #    enabled: true
     #    tlsSecret: my-tls-secret
-    #    certRenewInterval: 8760h
 
   ## DB character set. N/A for createAs clone or standby
   charset: AL32UTF8
