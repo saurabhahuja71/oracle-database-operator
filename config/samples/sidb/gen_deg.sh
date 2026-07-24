@@ -2,8 +2,9 @@
 
 set -euo pipefail
 
-NS="${NS:-shns}"
-STANDBY_DB="${STANDBY_DB:-sidb-standby}"
+NS="${NS:-default}"
+PRIMARY_DB="${PRIMARY_DB:-sidb-sample}"
+STANDBY_DB="${STANDBY_DB:-standbydatabase-sample}"
 BROKER_YAML="${BROKER_YAML:-dataguardbroker.yaml}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

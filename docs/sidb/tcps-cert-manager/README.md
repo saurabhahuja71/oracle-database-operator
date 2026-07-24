@@ -21,15 +21,15 @@ The leaf certificates are issued with both **Server Authentication** and **Clien
 
 ---
 
-# Files
+## Files
 
-- `env.sh` – shared defaults and kubectl helpers
-- `01-create-namespace.sh` through `11-verify-secrets.sh` – one step per action
-- `run-all.sh` – executes the complete workflow
+- `env.sh`: shared defaults and kubectl helpers
+- `01-create-namespace.sh` through `11-verify-secrets.sh`: one step per action
+- `run-all.sh`: runs the full flow in order
 
 ---
 
-# Defaults
+## Defaults
 
 If you do not export variables first, the scripts use these defaults:
 
@@ -77,7 +77,7 @@ It then copies the primary trust bundle to the True Cache cluster.
 
 ---
 
-# Run
+## Run
 
 Before running the scripts, export the namespace you want to use.
 
@@ -149,9 +149,9 @@ You can also execute the workflow one step at a time:
 
 ---
 
-# Validation
+## Validation
 
-## Verify Certificate resources
+### Verify Certificate resources
 
 Ensure cert-manager successfully issued both certificates.
 
@@ -170,7 +170,7 @@ Expected:
 
 ---
 
-## Verify TLS secrets
+### Verify TLS secrets
 
 Ensure both TLS secrets exist.
 
@@ -199,7 +199,7 @@ Run the built-in verification script:
 
 ---
 
-## Validate the leaf certificates
+### Validate the leaf certificates
 
 Inspect the primary certificate:
 
@@ -255,7 +255,7 @@ openssl x509 \
 
 ---
 
-## Verify the certificate chain
+### Verify the certificate chain
 
 ```bash
 kubectl -n "${NS}" get secret "${PRIMARY_SECRET_NAME}" \
@@ -281,7 +281,7 @@ Expected output:
 
 ---
 
-# Cleanup
+## Cleanup
 
 Delete all generated resources if you need to recreate the TCPS certificates from scratch.
 
@@ -360,7 +360,7 @@ kubectl --context "${STANDBY_CTX}" -n "${NS}" delete issuer \
 
 ---
 
-# SIDB Manifest Wiring
+## SIDB Manifest Wiring
 
 Use the generated primary TLS secret:
 
