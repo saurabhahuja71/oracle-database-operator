@@ -65,18 +65,27 @@ Use this repository to install and validate the operator, ensure it is running c
 
 ### v2.2.0
 
-- **Traffic Manager** controller for managed NGINX reverse-proxy and Oracle Connection Manager (CMAN) endpoints
-- PrivateAI integration with Traffic Manager for path-based routing across multiple deployments
-- CMAN support for generated rules, file-mode `cman.ora`, global next-hop, and service-alias next-hop patterns
-- Documentation and sample manifests under [`docs/trafficmanager/`](./docs/trafficmanager/)
+Version 2.2 introduces expanded database lifecycle automation, stronger reconciliation, new networking capabilities, and improved operator security and observability.
 
-### v2.1.0
+| Controller / area | Highlights |
+| --- | --- |
+| **AutonomousDatabase** | • OCI lifecycle reconciliation, finalizers, wallet validation and rotation<br>• Backup-resource synchronization and cleanup |
+| **AutonomousContainerDatabase** | • OCI lifecycle-state validation and finalizer-based cleanup<br>• Kubernetes-to-OCI state synchronization |
+| **AutonomousDatabaseBackup / Restore** | • Target validation and owner references<br>• Point-in-time restore and OCI work-request integration |
+| **DbcsSystem** | • Pluggable database create/delete/status management<br>• Data Guard and KMS vault workflows with retry-safe status updates |
+| **LREST / LRPDB** | • ReplicaSet, TLS/CA secret, and service automation<br>• Declarative PDB lifecycle, SQL/configuration drift monitoring, and PDB auto-discovery |
+| **OracleRestart** | • Phased reconciliation for validation, storage, workload, and finalization<br>• ASM disk lifecycle with static/dynamic PV/PVC handling |
+| **OracleRestDataService / ORDS Services** | • Expanded ORDS lifecycle, TLS, secret, configuration, and status management |
+| **RacDatabase** | • Expanded RAC and ASM storage lifecycle<br>• Disk/PVC provisioning, Data Guard integration, and validation |
+| **ShardingDatabase** | • Sharded topology lifecycle and scaling<br>• Catalog/shard management, Data Guard prerequisites, and status validation |
+| **SingleInstanceDatabase** | • Service endpoints, TCPS, TrueCache, Data Guard prerequisites, clone/restore, and external PVCs<br>• Improved pod security, resource handling, recreation checks, and connection status |
+| **DataguardBroker** | • Topology runtime, authentication wallets, validation/provisioning, FSFO observer management, and operation tracking<br>• Idempotent manual switchover support |
+| **DatabaseObserver** | • Safer child-resource ownership and Server-Side Apply<br>• Improved deployment readiness and status handling |
+| **PrivateAI** | • Phased dependency/workload reconciliation and update-lock status<br>• TLS secret lifecycle, Traffic Manager integration, and rollout tracking |
+| **TrafficManager** *(new)* | • Managed NGINX reverse-proxy and Oracle Connection Manager (CMAN) endpoints<br>• PrivateAI path-based routing, generated rules, `cman.ora` file mode, next-hop patterns, TLS, and endpoint status |
+| **Operator platform** | • New `network.oracle.com/v4` API and TrafficManager CRD<br>• Secure HTTPS metrics, hardened manager security context, expanded RBAC/webhooks, compatibility webhooks, network policy, samples, and test coverage |
 
-- Oracle Real Application Cluster (RAC) database controller support for provisioning, scaling, and ASM disk operations
-- Private AI controller support for provisioning and managing Oracle Private AI Services Container
-- LREST controller enhancements
-- General bug fixes and stability improvements
-
+See the Traffic Manager documentation and sample manifests under [`docs/trafficmanager/`](./docs/trafficmanager/).
 ## Platform Compatibility
 
 This production release has been installed and tested on the following platforms:
