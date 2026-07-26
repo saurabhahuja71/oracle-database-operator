@@ -6925,6 +6925,7 @@ func (r *SingleInstanceDatabaseReconciler) cleanupManagedSingleInstanceDatabaseP
 func (r *SingleInstanceDatabaseReconciler) manageConvPhysicalToSnapshot(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("manageConvPhysicalToSnapshot", req.NamespacedName)
 	var singleInstanceDatabase dbapi.SingleInstanceDatabase
+
 	if err := r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: req.Name}, &singleInstanceDatabase); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("requested resource not found")
@@ -6932,6 +6933,20 @@ func (r *SingleInstanceDatabaseReconciler) manageConvPhysicalToSnapshot(ctx cont
 		}
 		log.Error(err, err.Error())
 		return requeueY, err
+	}
+
+	// The caller may have entered this function using stale reconcile state.
+	// Re-check the latest CR before performing any role conversion.
+	if singleInstanceDatabase.Spec.ConvertToSnapshotStandby ==
+		singleInstanceDatabase.Status.ConvertToSnapshotStandby {
+
+		log.Info(
+			"Snapshot standby conversion no longer requested; skipping",
+			"specConvertToSnapshotStandby", singleInstanceDatabase.Spec.ConvertToSnapshotStandby,
+			"statusConvertToSnapshotStandby", singleInstanceDatabase.Status.ConvertToSnapshotStandby,
+		)
+
+		return requeueN, nil
 	}
 
 	sidbReadyPod, err := GetDatabaseReadyPod(r, &singleInstanceDatabase, ctx, req)
@@ -6953,73 +6968,111 @@ func (r *SingleInstanceDatabaseReconciler) manageConvPhysicalToSnapshot(ctx cont
 		if err := r.Status().Update(ctx, &singleInstanceDatabase); err != nil {
 			return requeueY, err
 		}
+
 		if err := convertPhysicalStdToSnapshotStdDB(r, &singleInstanceDatabase, &sidbReadyPod, ctx, req); err != nil {
 			singleInstanceDatabase.Status.Status = dbcommons.StatusPending
 			if updateErr := r.Status().Update(ctx, &singleInstanceDatabase); updateErr != nil {
 				log.Error(updateErr, "failed to update status after conversion failure")
 			}
+
 			switch err {
 			case ErrNotPhysicalStandby:
 				singleInstanceDatabase.Status.Status = dbcommons.StatusError
 				if updateErr := r.Status().Update(ctx, &singleInstanceDatabase); updateErr != nil {
 					log.Error(updateErr, "failed to update status after snapshot standby eligibility failure")
 				}
-				r.Recorder.Event(&singleInstanceDatabase, corev1.EventTypeWarning, "Error: Conversion to Snapshot Standby Not allowed", "Database not in physical standby role")
+				r.Recorder.Event(
+					&singleInstanceDatabase,
+					corev1.EventTypeWarning,
+					"Error: Conversion to Snapshot Standby Not allowed",
+					"Database not in physical standby role",
+				)
 				log.Info("Error: Conversion to Snapshot Standby not allowed as database not in physical standby role")
 				return requeueN, err
+
 			case ErrSnapshotStandbyOpenModeNotAllowed:
 				singleInstanceDatabase.Status.Status = dbcommons.StatusError
 				if updateErr := r.Status().Update(ctx, &singleInstanceDatabase); updateErr != nil {
 					log.Error(updateErr, "failed to update status after snapshot standby open mode eligibility failure")
 				}
-				r.Recorder.Event(&singleInstanceDatabase, corev1.EventTypeWarning, "Error: Conversion to Snapshot Standby Not allowed", "Database open mode is not valid for snapshot standby conversion")
+				r.Recorder.Event(
+					&singleInstanceDatabase,
+					corev1.EventTypeWarning,
+					"Error: Conversion to Snapshot Standby Not allowed",
+					"Database open mode is not valid for snapshot standby conversion",
+				)
 				log.Info("Error: Conversion to Snapshot Standby not allowed because database open mode is not valid")
 				return requeueN, err
+
 			case ErrDBNotConfiguredWithDG:
 				singleInstanceDatabase.Status.Status = dbcommons.StatusError
 				if updateErr := r.Status().Update(ctx, &singleInstanceDatabase); updateErr != nil {
 					log.Error(updateErr, "failed to update status after dataguard configuration eligibility failure")
 				}
-				// cannot convert to snapshot database
-				r.Recorder.Event(&singleInstanceDatabase, corev1.EventTypeWarning, "Error: Conversion to Snapshot Standby Not allowed", "Database is not configured with dataguard")
+				r.Recorder.Event(
+					&singleInstanceDatabase,
+					corev1.EventTypeWarning,
+					"Error: Conversion to Snapshot Standby Not allowed",
+					"Database is not configured with dataguard",
+				)
 				log.Info("Conversion to Snapshot Standby not allowed as requested database is not configured with dataguard")
 				return requeueN, err
+
 			case ErrFSFOEnabledForDGConfig:
 				singleInstanceDatabase.Status.Status = dbcommons.StatusError
 				if updateErr := r.Status().Update(ctx, &singleInstanceDatabase); updateErr != nil {
 					log.Error(updateErr, "failed to update status after FSFO eligibility failure")
 				}
-				r.Recorder.Event(&singleInstanceDatabase, corev1.EventTypeWarning, "Error: Conversion to Snapshot Standby Not allowed", "Database is a FastStartFailover target")
+				r.Recorder.Event(
+					&singleInstanceDatabase,
+					corev1.EventTypeWarning,
+					"Error: Conversion to Snapshot Standby Not allowed",
+					"Database is a FastStartFailover target",
+				)
 				log.Info("Conversion to Snapshot Standby Not allowed as database is a FastStartFailover target")
 				return requeueN, err
+
 			case ErrAdminPasswordSecretNotFound:
-				r.Recorder.Event(&singleInstanceDatabase, corev1.EventTypeWarning, "Error: Admin Password", "Database admin password secret not found")
+				r.Recorder.Event(
+					&singleInstanceDatabase,
+					corev1.EventTypeWarning,
+					"Error: Admin Password",
+					"Database admin password secret not found",
+				)
 				log.Info("Database admin password secret not found")
 				return requeueY, nil
+
 			default:
 				log.Error(err, err.Error())
 				return requeueY, nil
 			}
 		}
+
 		log.Info(fmt.Sprintf("Database %s converted to snapshot standby", singleInstanceDatabase.Name))
 		singleInstanceDatabase.Status.ConvertToSnapshotStandby = true
 		singleInstanceDatabase.Status.Status = dbcommons.StatusReady
+
 		// Get database role and update the status
 		sidbRole, err := dbcommons.GetDatabaseRole(sidbReadyPod, r, r.Config, ctx, req)
 		if err != nil {
 			return requeueN, err
 		}
+
 		log.Info("Database "+singleInstanceDatabase.Name, "Database Role : ", sidbRole)
 		singleInstanceDatabase.Status.Role = sidbRole
+
 		if err := r.Status().Update(ctx, &singleInstanceDatabase); err != nil {
 			return requeueY, err
 		}
+
 	} else {
 		// Convert a SNAPSHOT_STANDBY -> PHYSICAL_STANDBY
 		singleInstanceDatabase.Status.Status = dbcommons.StatusUpdating
+
 		if err := r.Status().Update(ctx, &singleInstanceDatabase); err != nil {
 			return requeueY, err
 		}
+
 		if err := convertSnapshotStdToPhysicalStdDB(r, &singleInstanceDatabase, &sidbReadyPod, ctx, req); err != nil {
 			switch err {
 			default:
@@ -7027,15 +7080,19 @@ func (r *SingleInstanceDatabaseReconciler) manageConvPhysicalToSnapshot(ctx cont
 				return requeueY, nil
 			}
 		}
+
 		singleInstanceDatabase.Status.ConvertToSnapshotStandby = false
 		singleInstanceDatabase.Status.Status = dbcommons.StatusReady
+
 		// Get database role and update the status
 		sidbRole, err := dbcommons.GetDatabaseRole(sidbReadyPod, r, r.Config, ctx, req)
 		if err != nil {
 			return requeueN, err
 		}
+
 		log.Info("Database "+singleInstanceDatabase.Name, "Database Role : ", sidbRole)
 		singleInstanceDatabase.Status.Role = sidbRole
+
 		if err := r.Status().Update(ctx, &singleInstanceDatabase); err != nil {
 			return requeueY, err
 		}
@@ -7044,86 +7101,218 @@ func (r *SingleInstanceDatabaseReconciler) manageConvPhysicalToSnapshot(ctx cont
 	return requeueN, nil
 }
 
-func convertPhysicalStdToSnapshotStdDB(r *SingleInstanceDatabaseReconciler, singleInstanceDatabase *dbapi.SingleInstanceDatabase, sidbReadyPod *corev1.Pod, ctx context.Context, req ctrl.Request) error {
+func convertPhysicalStdToSnapshotStdDB(
+	r *SingleInstanceDatabaseReconciler,
+	singleInstanceDatabase *dbapi.SingleInstanceDatabase,
+	sidbReadyPod *corev1.Pod,
+	ctx context.Context,
+	req ctrl.Request,
+) error {
 	log := r.Log.WithValues("convertPhysicalStdToSnapshotStdDB", req.NamespacedName)
+
 	liveRole, err := dbcommons.GetDatabaseRole(*sidbReadyPod, r, r.Config, ctx, req)
 	if err != nil {
 		return err
 	}
+
 	singleInstanceDatabase.Status.Role = liveRole
 	normalizedRole := normalizeDatabaseRole(liveRole)
-	log.Info("Checking live database role before snapshot standby conversion", "database", singleInstanceDatabase.Name, "role", liveRole, "normalizedRole", normalizedRole)
+
+	log.Info(
+		"Checking live database role before snapshot standby conversion",
+		"database", singleInstanceDatabase.Name,
+		"role", liveRole,
+		"normalizedRole", normalizedRole,
+	)
+
 	if normalizedRole != "PHYSICAL_STANDBY" {
 		return ErrNotPhysicalStandby
 	}
-	openMode, err := dbcommons.GetDatabaseOpenMode(*sidbReadyPod, r, r.Config, ctx, req, singleInstanceDatabase.Spec.Edition)
+
+	openMode, err := dbcommons.GetDatabaseOpenMode(
+		*sidbReadyPod,
+		r,
+		r.Config,
+		ctx,
+		req,
+		singleInstanceDatabase.Spec.Edition,
+	)
 	if err != nil {
 		return err
 	}
+
 	normalizedOpenMode := normalizeDatabaseOpenMode(openMode)
-	log.Info("Checking live database open mode before snapshot standby conversion", "database", singleInstanceDatabase.Name, "openMode", openMode, "normalizedOpenMode", normalizedOpenMode)
+
+	log.Info(
+		"Checking live database open mode before snapshot standby conversion",
+		"database", singleInstanceDatabase.Name,
+		"openMode", openMode,
+		"normalizedOpenMode", normalizedOpenMode,
+	)
+
 	if !snapshotStandbyConversionOpenModeAllowed(openMode) {
 		return ErrSnapshotStandbyOpenModeNotAllowed
 	}
 
 	var dataguardBroker dbapi.DataguardBroker
-	log.Info(fmt.Sprintf("Checking if the database %s is configured with dgbroker or not ?", singleInstanceDatabase.Name))
+
+	log.Info(fmt.Sprintf(
+		"Checking if the database %s is configured with dgbroker or not ?",
+		singleInstanceDatabase.Name,
+	))
+
 	if singleInstanceDatabase.Status.DgBroker != nil {
-		if err := r.Get(ctx, types.NamespacedName{Namespace: singleInstanceDatabase.Namespace, Name: *singleInstanceDatabase.Status.DgBroker}, &dataguardBroker); err != nil {
+		if err := r.Get(
+			ctx,
+			types.NamespacedName{
+				Namespace: singleInstanceDatabase.Namespace,
+				Name:      *singleInstanceDatabase.Status.DgBroker,
+			},
+			&dataguardBroker,
+		); err != nil {
 			if apierrors.IsNotFound(err) {
 				log.Info("Resource not found")
 				return errors.New("Dataguardbroker resource not found")
 			}
 			return err
 		}
-		log.Info(fmt.Sprintf("database %s is configured with dgbroker %s", singleInstanceDatabase.Name, *singleInstanceDatabase.Status.DgBroker))
-		if fastStartFailoverStatus, _ := strconv.ParseBool(dataguardBroker.Status.FastStartFailover); fastStartFailoverStatus {
-			// not allowed to convert to snapshot standby
+
+		log.Info(fmt.Sprintf(
+			"database %s is configured with dgbroker %s",
+			singleInstanceDatabase.Name,
+			*singleInstanceDatabase.Status.DgBroker,
+		))
+
+		if fastStartFailoverStatus, _ :=
+			strconv.ParseBool(dataguardBroker.Status.FastStartFailover); fastStartFailoverStatus {
 			return ErrFSFOEnabledForDGConfig
 		}
+
 	} else {
-		// cannot convert to snapshot database
 		return ErrDBNotConfiguredWithDG
 	}
 
-	// get singleinstancedatabase ready pod
-	// execute the dgmgrl command for conversion to snapshot database
-	// Exception handling
-	// Get Admin password for current primary database
 	var adminPasswordSecret corev1.Secret
-	if err := r.Get(context.TODO(), types.NamespacedName{Name: GetAdminPasswordSecretName(singleInstanceDatabase), Namespace: singleInstanceDatabase.Namespace}, &adminPasswordSecret); err != nil {
+	if err := r.Get(
+		context.TODO(),
+		types.NamespacedName{
+			Name:      GetAdminPasswordSecretName(singleInstanceDatabase),
+			Namespace: singleInstanceDatabase.Namespace,
+		},
+		&adminPasswordSecret,
+	); err != nil {
 		return err
 	}
-	var adminPassword string = string(adminPasswordSecret.Data[GetAdminPasswordSecretFileName(singleInstanceDatabase)])
 
-	// Connect to 'primarySid' db using dgmgrl and switchover to 'targetSidbSid' db to make 'targetSidbSid' db primary
-	if _, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c", fmt.Sprintf(dbcommons.CreateAdminPasswordFile, adminPassword)); err != nil {
+	var adminPassword string =
+		string(adminPasswordSecret.Data[GetAdminPasswordSecretFileName(singleInstanceDatabase)])
+
+	if _, err := dbcommons.ExecCommand(
+		r,
+		r.Config,
+		sidbReadyPod.Name,
+		sidbReadyPod.Namespace,
+		"",
+		ctx,
+		req,
+		true,
+		"bash",
+		"-c",
+		fmt.Sprintf(dbcommons.CreateAdminPasswordFile, adminPassword),
+	); err != nil {
 		return err
 	}
 
-	out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c", fmt.Sprintf("dgmgrl sys@%s \"convert database %s to snapshot standby;\" < admin.pwd", dataguardBroker.Status.PrimaryDatabase, singleInstanceDatabase.Status.Sid))
+	out, err := dbcommons.ExecCommand(
+		r,
+		r.Config,
+		sidbReadyPod.Name,
+		sidbReadyPod.Namespace,
+		"",
+		ctx,
+		req,
+		true,
+		"bash",
+		"-c",
+		fmt.Sprintf(
+			"dgmgrl sys@%s \"convert database %s to snapshot standby;\" < admin.pwd",
+			dataguardBroker.Status.PrimaryDatabase,
+			singleInstanceDatabase.Status.Sid,
+		),
+	)
 	if err != nil {
 		return err
 	}
+
 	if containsOracleOrBrokerError(out) {
-		return fmt.Errorf("snapshot standby conversion failed: %s", strings.TrimSpace(out))
+		return fmt.Errorf(
+			"snapshot standby conversion failed: %s",
+			strings.TrimSpace(out),
+		)
 	}
+
 	log.Info(fmt.Sprintf("Convert to snapshot standby command output \n %s", out))
 
-	out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c", fmt.Sprintf("echo -e  \"alter pluggable database %s open;\"  | %s", singleInstanceDatabase.Status.Pdbname, dbcommons.SQLPlusCLI))
+	// Skip PDB recovery for a non-CDB database.
+	if strings.TrimSpace(singleInstanceDatabase.Spec.Pdbname) == "" &&
+		strings.TrimSpace(singleInstanceDatabase.Status.Pdbname) == "" {
+		log.Info("No PDB configured; skipping PDB open after snapshot standby conversion")
+		return nil
+	}
+
+	// Do not depend on Status.Pdbname because a standby may retain a
+	// configured name different from the actual cloned PDB name.
+	out, err = dbcommons.ExecCommand(
+		r,
+		r.Config,
+		sidbReadyPod.Name,
+		sidbReadyPod.Namespace,
+		"",
+		ctx,
+		req,
+		true,
+		"bash",
+		"-c",
+		fmt.Sprintf(
+			"echo -e \"whenever sqlerror exit sql.sqlcode;\\nalter pluggable database all open;\\nexit;\" | %s",
+			dbcommons.SQLPlusCLI,
+		),
+	)
 	if err != nil {
 		return err
 	}
+
+	// ExecCommand can succeed even when SQLPlus output contains ORA errors.
+	if containsOracleOrBrokerError(out) {
+		return fmt.Errorf(
+			"failed to open pluggable databases after snapshot standby conversion: %s",
+			strings.TrimSpace(out),
+		)
+	}
+
 	log.Info(fmt.Sprintf("Open pluggable databases output \n %s", out))
 
 	return nil
 }
 
-func convertSnapshotStdToPhysicalStdDB(r *SingleInstanceDatabaseReconciler, singleInstanceDatabase *dbapi.SingleInstanceDatabase, sidbReadyPod *corev1.Pod, ctx context.Context, req ctrl.Request) error {
+func convertSnapshotStdToPhysicalStdDB(
+	r *SingleInstanceDatabaseReconciler,
+	singleInstanceDatabase *dbapi.SingleInstanceDatabase,
+	sidbReadyPod *corev1.Pod,
+	ctx context.Context,
+	req ctrl.Request,
+) error {
 	log := r.Log.WithValues("convertSnapshotStdToPhysicalStdDB", req.NamespacedName)
 
 	var dataguardBroker dbapi.DataguardBroker
-	if err := r.Get(ctx, types.NamespacedName{Namespace: singleInstanceDatabase.Namespace, Name: *singleInstanceDatabase.Status.DgBroker}, &dataguardBroker); err != nil {
+	if err := r.Get(
+		ctx,
+		types.NamespacedName{
+			Namespace: singleInstanceDatabase.Namespace,
+			Name:      *singleInstanceDatabase.Status.DgBroker,
+		},
+		&dataguardBroker,
+	); err != nil {
 		if apierrors.IsNotFound(err) {
 			return errors.New("dataguardbroker resource not found")
 		}
@@ -7131,33 +7320,118 @@ func convertSnapshotStdToPhysicalStdDB(r *SingleInstanceDatabaseReconciler, sing
 	}
 
 	var adminPasswordSecret corev1.Secret
-	if err := r.Get(context.TODO(), types.NamespacedName{Name: GetAdminPasswordSecretName(singleInstanceDatabase), Namespace: singleInstanceDatabase.Namespace}, &adminPasswordSecret); err != nil {
+	if err := r.Get(
+		context.TODO(),
+		types.NamespacedName{
+			Name:      GetAdminPasswordSecretName(singleInstanceDatabase),
+			Namespace: singleInstanceDatabase.Namespace,
+		},
+		&adminPasswordSecret,
+	); err != nil {
 		if apierrors.IsNotFound(err) {
 			return ErrAdminPasswordSecretNotFound
 		}
 		return err
 	}
-	var adminPassword string = string(adminPasswordSecret.Data[GetAdminPasswordSecretFileName(singleInstanceDatabase)])
 
-	// Connect to 'primarySid' db using dgmgrl and switchover to 'targetSidbSid' db to make 'targetSidbSid' db primary
-	_, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
-		fmt.Sprintf(dbcommons.CreateAdminPasswordFile, adminPassword))
+	var adminPassword string =
+		string(adminPasswordSecret.Data[GetAdminPasswordSecretFileName(singleInstanceDatabase)])
+
+	_, err := dbcommons.ExecCommand(
+		r,
+		r.Config,
+		sidbReadyPod.Name,
+		sidbReadyPod.Namespace,
+		"",
+		ctx,
+		req,
+		true,
+		"bash",
+		"-c",
+		fmt.Sprintf(dbcommons.CreateAdminPasswordFile, adminPassword),
+	)
 	if err != nil {
 		return err
 	}
+
 	log.Info("Converting snapshot standby to physical standby")
-	out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c", fmt.Sprintf("dgmgrl sys@%s \"convert database %s to physical standby;\" < admin.pwd", dataguardBroker.Status.PrimaryDatabase, singleInstanceDatabase.Status.Sid))
+
+	out, err := dbcommons.ExecCommand(
+		r,
+		r.Config,
+		sidbReadyPod.Name,
+		sidbReadyPod.Namespace,
+		"",
+		ctx,
+		req,
+		true,
+		"bash",
+		"-c",
+		fmt.Sprintf(
+			"dgmgrl sys@%s \"convert database %s to physical standby;\" < admin.pwd",
+			dataguardBroker.Status.PrimaryDatabase,
+			singleInstanceDatabase.Status.Sid,
+		),
+	)
 	if err != nil {
 		log.Error(err, err.Error())
 		return err
 	}
-	log.Info(fmt.Sprintf("Database %s converted to physical standby \n %s", singleInstanceDatabase.Name, out))
+
+	// DGMGRL can return Oracle/Broker errors in output even when
+	// ExecCommand itself does not return a shell error.
+	if containsOracleOrBrokerError(out) {
+		return fmt.Errorf(
+			"physical standby conversion failed: %s",
+			strings.TrimSpace(out),
+		)
+	}
+
+	log.Info(fmt.Sprintf(
+		"Database %s converted to physical standby \n %s",
+		singleInstanceDatabase.Name,
+		out,
+	))
+
+	// Nothing to open for a non-CDB database.
+	if strings.TrimSpace(singleInstanceDatabase.Spec.Pdbname) == "" &&
+		strings.TrimSpace(singleInstanceDatabase.Status.Pdbname) == "" {
+		log.Info("No PDB configured; skipping PDB open after physical standby conversion")
+		return nil
+	}
+
 	log.Info("opening the PDB for the database")
-	out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c", fmt.Sprintf("echo -e  \"alter pluggable database %s open;\"  | %s", singleInstanceDatabase.Status.Pdbname, dbcommons.SQLPlusCLI))
+
+	// Open actual PDBs instead of trusting Status.Pdbname.
+	out, err = dbcommons.ExecCommand(
+		r,
+		r.Config,
+		sidbReadyPod.Name,
+		sidbReadyPod.Namespace,
+		"",
+		ctx,
+		req,
+		true,
+		"bash",
+		"-c",
+		fmt.Sprintf(
+			"echo -e \"whenever sqlerror exit sql.sqlcode;\\nalter pluggable database all open;\\nexit;\" | %s",
+			dbcommons.SQLPlusCLI,
+		),
+	)
 	if err != nil {
 		r.Log.Error(err, err.Error())
 		return err
 	}
+
+	// Do not mark the conversion successful when SQLPlus returned ORA-*.
+	if containsOracleOrBrokerError(out) {
+		return fmt.Errorf(
+			"failed to open pluggable databases after physical standby conversion: %s",
+			strings.TrimSpace(out),
+		)
+	}
+
 	log.Info(fmt.Sprintf("PDB open command output %s", out))
 
 	return nil

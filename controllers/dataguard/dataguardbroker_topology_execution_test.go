@@ -16,6 +16,12 @@ func TestDataguardBrokerOutputErrorDetectsBrokerErrors(t *testing.T) {
 	if err := dataguardBrokerOutputError("Connected to \"STBYDB\"\nConfiguration SUCCESS"); err != nil {
 		t.Fatalf("did not expect a broker error: %v", err)
 	}
+	if err := dataguardBrokerOutputError(
+		`Connected to "STBYDB"
+	ORA-16596: Member is not part of the Oracle Data Guard broker configuration.`,
+	); err == nil {
+		t.Fatalf("expected ORA-16596 to be treated as a DGMGRL error")
+	}
 }
 
 func TestDataguardBrokerConfigurationPreviouslyObserved(t *testing.T) {
@@ -442,7 +448,7 @@ func TestBuildDataguardTopologyCreateConfigurationScriptUsesResolvedConnectStrin
 	if !strings.Contains(script, "CREATE CONFIGURATION dg_config AS PRIMARY DATABASE IS PRIMDB CONNECT IDENTIFIER IS 'sidb-primary.shns.svc.cluster.local:1521/PRIMDB';") {
 		t.Fatalf("expected primary create configuration connect string, got:\n%s", script)
 	}
-	if !strings.Contains(script, "ADD DATABASE STBYDB AS CONNECT IDENTIFIER IS 'sidb-standby.shns.svc.cluster.local:1521/STBYDB' MAINTAINED AS PHYSICAL;") {
+	if !strings.Contains(script, "ADD DATABASE STBYDB AS CONNECT IDENTIFIER IS 'sidb-standby.shns.svc.cluster.local:1521/STBYDB';") {
 		t.Fatalf("expected standby add database connect string, got:\n%s", script)
 	}
 }
@@ -470,7 +476,7 @@ func TestBuildDataguardTopologyAddDatabaseScriptUsesResolvedConnectStrings(t *te
 	if err != nil {
 		t.Fatalf("expected add database script to build, got %v", err)
 	}
-	if !strings.Contains(script, "ADD DATABASE STBYDB AS CONNECT IDENTIFIER IS 'sidb-standby.shns.svc.cluster.local:1521/STBYDB' MAINTAINED AS PHYSICAL;") {
+	if !strings.Contains(script, "ADD DATABASE STBYDB AS CONNECT IDENTIFIER IS 'sidb-standby.shns.svc.cluster.local:1521/STBYDB';") {
 		t.Fatalf("expected add database connect string, got:\n%s", script)
 	}
 }
