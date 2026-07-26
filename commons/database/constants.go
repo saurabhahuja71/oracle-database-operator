@@ -351,7 +351,7 @@ const InitORDSCMD string = "set -eu" +
 	" --db-port \"${ORACLE_PORT}\"" +
 	" --db-servicename \"${ORACLE_SERVICE}\"" +
 	" --admin-user \"SYS AS SYSDBA\"" +
-	" --db-user \"${ORDS_USER}\"" +
+
 	" --proxy-user" +
 	" --feature-db-api true" +
 	" --feature-rest-enabled-sql true" +
