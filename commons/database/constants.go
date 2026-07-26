@@ -387,7 +387,7 @@ const UninstallORDSCMD string = "\numask 177" +
 
 const ORDSDefaultHTTPPort int32 = 8080
 
-const GetORDSStatus string = "curl -sSkvf -k -X GET http://localhost:%d/ords/_/landing"
+const GetORDSStatus string = "curl -sSkfL -o /dev/null -w 'HTTP %%{http_code}\\n' http://localhost:%d/ords/_/landing"
 
 const ORDSReadinessProbe string = "curl -sSkvf -k -X GET http://localhost:%d/ords/_/landing"
 

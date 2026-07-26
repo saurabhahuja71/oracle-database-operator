@@ -26,4 +26,9 @@ func TestGetORDSStatusUsesUnmappedLandingEndpoint(t *testing.T) {
 	if strings.Contains(statusCommand, "/db-api/") {
 		t.Fatalf("ORDS status command must not require a database mapping, got %q", statusCommand)
 	}
+	for _, fragment := range []string{"-sSkfL", "-o /dev/null", "-w 'HTTP %{http_code}\\n'"} {
+		if !strings.Contains(statusCommand, fragment) {
+			t.Fatalf("expected ORDS status command to contain %q, got %q", fragment, statusCommand)
+		}
+	}
 }

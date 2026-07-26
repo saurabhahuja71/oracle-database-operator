@@ -785,39 +785,36 @@ func (r *OracleRestDataServiceReconciler) checkHealthStatus(m *dbapi.OracleRestD
 		}()))
 	log.Info("GetORDSStatus Output")
 	log.Info(out)
-	if strings.Contains(strings.ToUpper(out), "ERROR") {
-		return requeueY, readyPod
-	}
 	if err != nil {
 		log.Info(err.Error())
-		if strings.Contains(strings.ToUpper(err.Error()), "ERROR") {
-			return requeueY, readyPod
-		}
+		return requeueY, readyPod
+	}
+	if !strings.Contains(out, "HTTP 200") {
+		log.Info("ORDS landing endpoint did not return HTTP 200")
+		return requeueY, readyPod
 	}
 
 	m.Status.Status = dbcommons.StatusUpdating
-	if strings.Contains(out, "HTTP/1.1 200 OK") || strings.Contains(strings.ToUpper(err.Error()), "HTTP/1.1 200 OK") {
-		if n.Status.Status == dbcommons.StatusReady || n.Status.Status == dbcommons.StatusUpdating || n.Status.Status == dbcommons.StatusPatching {
-			m.Status.Status = dbcommons.StatusReady
+	if n.Status.Status == dbcommons.StatusReady || n.Status.Status == dbcommons.StatusUpdating || n.Status.Status == dbcommons.StatusPatching {
+		m.Status.Status = dbcommons.StatusReady
+	}
+	if !m.Status.OrdsInstalled {
+		m.Status.OrdsInstalled = true
+		n.Status.OrdsReference = m.Name
+		if err := r.Status().Update(ctx, n); err != nil {
+			log.Error(err, "failed to update SingleInstanceDatabase ORDS reference")
+			return requeueY, readyPod
 		}
-		if !m.Status.OrdsInstalled {
-			m.Status.OrdsInstalled = true
-			n.Status.OrdsReference = m.Name
-			if err := r.Status().Update(ctx, n); err != nil {
-				log.Error(err, "failed to update SingleInstanceDatabase ORDS reference")
-				return requeueY, readyPod
-			}
-			eventReason := "ORDS Installation"
-			eventMsg := "installation of ORDS completed"
-			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, "%s", eventMsg)
-			out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "",
-				ctx, req, false, "bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.OpenPDBSeed, dbcommons.SQLPlusCLI))
-			if err != nil {
-				log.Error(err, err.Error())
-			} else {
-				log.Info("Close PDB seed")
-				log.Info(out)
-			}
+		eventReason := "ORDS Installation"
+		eventMsg := "installation of ORDS completed"
+		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, "%s", eventMsg)
+		out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "",
+			ctx, req, false, "bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.OpenPDBSeed, dbcommons.SQLPlusCLI))
+		if err != nil {
+			log.Error(err, err.Error())
+		} else {
+			log.Info("Close PDB seed")
+			log.Info(out)
 		}
 	}
 	if m.Status.Status == dbcommons.StatusUpdating {
