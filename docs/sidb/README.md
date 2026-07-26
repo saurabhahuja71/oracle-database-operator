@@ -714,13 +714,17 @@ kubectl -n $NS cp \
   ./standby-wallet.zip
 ```
 
-If the image does not have `zip`, copy the wallet directory locally and zip it from your client machine:
+If the image does not have `zip`, copy the wallet root locally and zip it from your client machine:
 
 ```sh
-WALLET_ROOT=/opt/oracle/oradata/ORCL1/tdewallet/tde
+WALLET_ROOT=/opt/oracle/oradata/ORCL1/tdewallet
+
+rm -rf primary-wallet standby-wallet.zip
 
 kubectl -n $NS cp "$POD:$WALLET_ROOT" ./primary-wallet
-(cd primary-wallet && zip -qr ../standby-wallet.zip .)
+(cd primary-wallet && zip -qr ../standby-wallet.zip tde)
+
+unzip -t standby-wallet.zip
 ```
 
 Create the standby TDE secret. This secret must contain the TDE password and the wallet zip archive:
@@ -752,6 +756,7 @@ security:
       keepSecret: true
     tde:
       secretName: sidb-standby-tde-wallet
+      secretKey: tde_wallet_pwd # Not required for 19c - Required 23ai and later
       walletZipFileKey: wallet.zip
       walletRoot: /opt/oracle/oradata/ORCLS/tdewallet
 ```
@@ -760,11 +765,12 @@ Replace `ORCLS` with the standby SID.
 
 The important standby TDE fields are:
 
-- `secretName`: Kubernetes Secret containing the wallet password and wallet zip.
-- `walletZipFileKey`: Secret key containing the exported primary wallet zip.
-- `walletRoot`: destination wallet root for the standby database. Set this explicitly for predictable bootstrap behavior.
+* `secretName`: Kubernetes Secret containing the wallet password and wallet zip.
+- `secretKey`: - Not required for 19c - Required for 23ai and later (e.g., 23ai, 26ai) as `tde_wallet_pwd`
+* `walletZipFileKey`: Secret key containing the exported primary wallet zip.
+* `walletRoot`: destination wallet root for the standby database. Set this explicitly for predictable bootstrap behavior.
 
-During standby pod creation, the operator mounts `walletZipFileKey` as `standby-wallet.zip` and passes the path to the container. The image verifies that the zip is valid, extracts it into `walletRoot`, checks for `cwallet.sso` or `ewallet.p12`, and configures the standby TDE parameters.
+During standby pod creation, the operator mounts `walletZipFileKey` as `standby-wallet.zip` and passes the path to the container. The image verifies that the zip is valid, extracts the primary wallet into a temporary source directory, keeps `walletRoot` as the standby wallet destination, and configures DBCA with the source wallet, source wallet password, and destination wallet root.
 
 Verify the standby wallet mount and environment after the pod is created:
 
