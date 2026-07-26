@@ -335,7 +335,6 @@ const EnableORDSSchemaSQL string = "\nALTER SESSION SET CONTAINER=%[4]s;" +
 const InitORDSCMD string = "set -eu" +
 	"\nORDS_CONFIG=/etc/ords/config" +
 	"\nORDS_INSTALL_MARKER=\"${ORDS_CONFIG}/.ords-installed\"" +
-	"\nif [ -f \"${ORDS_INSTALL_MARKER}\" ]; then exit 0; fi" +
 	"\n: \"${ORACLE_HOST:?ORACLE_HOST is required}\"" +
 	"\n: \"${ORACLE_PORT:?ORACLE_PORT is required}\"" +
 	"\n: \"${ORACLE_SERVICE:?ORACLE_SERVICE is required}\"" +
@@ -345,6 +344,7 @@ const InitORDSCMD string = "set -eu" +
 	"\numask 077" +
 	"\nORDS_PASSWORD_FILE=\"/tmp/ords-passwords.$$\"" +
 	"\ntrap 'rm -f \"${ORDS_PASSWORD_FILE}\"' 0" +
+	"\nif [ ! -f \"${ORDS_INSTALL_MARKER}\" ]; then" +
 	"\nprintf '%s\\n%s\\n' \"${ORACLE_PWD}\" \"${ORDS_PWD}\" > \"${ORDS_PASSWORD_FILE}\"" +
 	"\n/usr/bin/ords --config \"${ORDS_CONFIG}\" install" +
 	" --db-hostname \"${ORACLE_HOST}\"" +
@@ -357,7 +357,16 @@ const InitORDSCMD string = "set -eu" +
 	" --feature-rest-enabled-sql true" +
 	" --feature-sdw true" +
 	" --password-stdin < \"${ORDS_PASSWORD_FILE}\"" +
-	"\ntouch \"${ORDS_INSTALL_MARKER}\""
+	"\ntouch \"${ORDS_INSTALL_MARKER}\"" +
+	"\nfi" +
+	"\n: \"${DBSERVICENAME:?DBSERVICENAME is required}\"" +
+	"\nPDB_POOL=$(printf '%s' \"${DBSERVICENAME}\" | tr '[:upper:]' '[:lower:]')" +
+	"\n/usr/bin/ords --config \"${ORDS_CONFIG}\" config --db-pool \"${PDB_POOL}\" set db.connectionType basic" +
+	"\n/usr/bin/ords --config \"${ORDS_CONFIG}\" config --db-pool \"${PDB_POOL}\" set db.hostname \"${ORACLE_HOST}\"" +
+	"\n/usr/bin/ords --config \"${ORDS_CONFIG}\" config --db-pool \"${PDB_POOL}\" set db.port \"${ORACLE_PORT}\"" +
+	"\n/usr/bin/ords --config \"${ORDS_CONFIG}\" config --db-pool \"${PDB_POOL}\" set db.servicename \"${DBSERVICENAME}\"" +
+	"\n/usr/bin/ords --config \"${ORDS_CONFIG}\" config --db-pool \"${PDB_POOL}\" set db.username \"${ORDS_USER}\"" +
+	"\nprintf '%s\\n' \"${ORDS_PWD}\" | /usr/bin/ords --config \"${ORDS_CONFIG}\" config --db-pool \"${PDB_POOL}\" secret db.password"
 
 const DbConnectString string = "CONN_STRING=sys/%[1]s@%[2]s:1521/%[3]s"
 
@@ -535,7 +544,7 @@ const SetApexUsers string = "\numask 177" +
 	"\numask 022"
 
 // Command to enable/disable MongoDB API support in ords pods
-const ConfigMongoDb string = "ords config set mongo.enabled %[1]s"
+const ConfigMongoDb string = "ords --config /etc/ords/config config set mongo.enabled %[1]s"
 
 // Get Sid, Pdbname, Edition for prebuilt db
 const GetSidPdbEditionCMD string = "echo $ORACLE_SID,$ORACLE_PDB,$ORACLE_EDITION;"

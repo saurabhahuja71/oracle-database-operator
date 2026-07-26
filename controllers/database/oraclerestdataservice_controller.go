@@ -381,10 +381,18 @@ func (r *OracleRestDataServiceReconciler) updateOracleRestDataServiceDatabaseSta
 	if phaseCtx == nil || phaseCtx.singleInstanceDatabase == nil || phaseCtx.singleInstanceDatabase.Name == "" {
 		return
 	}
-	if err := r.Status().Update(ctx, phaseCtx.singleInstanceDatabase); err != nil {
-		if apierrors.IsNotFound(err) {
-			return
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latest := &dbapi.SingleInstanceDatabase{}
+		if err := r.Get(ctx, types.NamespacedName{
+			Namespace: phaseCtx.singleInstanceDatabase.Namespace,
+			Name:      phaseCtx.singleInstanceDatabase.Name,
+		}, latest); err != nil {
+			return err
 		}
+		latest.Status = phaseCtx.singleInstanceDatabase.Status
+		return r.Status().Update(ctx, latest)
+	})
+	if err != nil && !apierrors.IsNotFound(err) {
 		r.Log.Error(err, "failed to update singleInstanceDatabase status", "reconcileID", phaseCtx.reconcileID)
 	}
 }
@@ -1001,6 +1009,15 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 							{Name: "SETUP_ONLY", Value: "true"},
 							{Name: "ORACLE_HOST", Value: n.Name},
 							{Name: "ORACLE_PORT", Value: "1521"},
+							{Name: "DBSERVICENAME", Value: func() string {
+								if n.Status.Pdbname != "" {
+									return n.Status.Pdbname
+								}
+								if n.Spec.Pdbname != "" {
+									return n.Spec.Pdbname
+								}
+								return n.Spec.Sid
+							}()},
 							{Name: "ORACLE_SERVICE", Value: func() string {
 								if m.Spec.OracleService != "" {
 									return m.Spec.OracleService
@@ -1290,7 +1307,7 @@ func (r *OracleRestDataServiceReconciler) createSVC(ctx context.Context, req ctr
 				lbAddress = svc.Status.LoadBalancer.Ingress[0].IP
 			}
 			m.Status.DatabaseApiUrl = "http://" + lbAddress + ":" +
-				fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/" + "{schema-name}" + "/_/db-api/stable/"
+				fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/" + "{pdb-name}/{schema-name}" + "/_/db-api/stable/"
 			m.Status.ServiceIP = lbAddress
 			m.Status.DatabaseActionsUrl = "http://" + lbAddress + ":" +
 				fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/sql-developer"
@@ -1312,7 +1329,7 @@ func (r *OracleRestDataServiceReconciler) createSVC(ctx context.Context, req ctr
 	if nodeip != "" {
 		m.Status.ServiceIP = nodeip
 		m.Status.DatabaseApiUrl = "http://" + nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) +
-			"/ords/" + "{schema-name}" + "/_/db-api/stable/"
+			"/ords/" + "{pdb-name}/{schema-name}" + "/_/db-api/stable/"
 		m.Status.DatabaseActionsUrl = "http://" + nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) +
 			"/ords/sql-developer"
 		if m.Status.ApexConfigured {
