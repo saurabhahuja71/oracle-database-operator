@@ -56,6 +56,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -360,10 +361,18 @@ func (r *OracleRestDataServiceReconciler) updateOracleRestDataServiceStatus(ctx 
 	if phaseCtx == nil || phaseCtx.oracleRestDataService == nil || phaseCtx.oracleRestDataService.Name == "" {
 		return
 	}
-	if err := r.Status().Update(ctx, phaseCtx.oracleRestDataService); err != nil {
-		if apierrors.IsNotFound(err) {
-			return
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latest := &dbapi.OracleRestDataService{}
+		if err := r.Get(ctx, types.NamespacedName{
+			Namespace: phaseCtx.oracleRestDataService.Namespace,
+			Name:      phaseCtx.oracleRestDataService.Name,
+		}, latest); err != nil {
+			return err
 		}
+		latest.Status = phaseCtx.oracleRestDataService.Status
+		return r.Status().Update(ctx, latest)
+	})
+	if err != nil && !apierrors.IsNotFound(err) {
 		r.Log.Error(err, "failed to update oracleRestDataService status", "reconcileID", phaseCtx.reconcileID)
 	}
 }
@@ -1398,13 +1407,16 @@ func (r *OracleRestDataServiceReconciler) createConnectionString(m *dbapi.Oracle
 
 	lastInitContIndex := len(pod.Status.InitContainerStatuses) - 1
 
-	// If InitContainerStatuses[<index_of_init_container>].Ready is true, it means that the init container is successful
-	if pod.Status.InitContainerStatuses[lastInitContIndex].Ready {
-		// Init container named "init-ords" has completed it's execution, hence return and don't requeue
-		return requeueN, nil
+	initStatus := pod.Status.InitContainerStatuses[lastInitContIndex]
+	if initStatus.State.Terminated != nil {
+		if initStatus.State.Terminated.ExitCode != 0 {
+			r.Log.Info("init-ords terminated unsuccessfully", "exitCode", initStatus.State.Terminated.ExitCode)
+			return requeueY, nil
+		}
+		// A successful init container is terminated before the main container starts.
 	}
 
-	if pod.Status.InitContainerStatuses[lastInitContIndex].State.Running == nil {
+	if initStatus.State.Terminated == nil && initStatus.State.Running == nil {
 		// Init container named "init-ords" is not running, so waiting for it to come in running state requeueing the reconcile request
 		r.Log.Info("Waiting for init-ords to come in running state...")
 		return requeueY, nil
@@ -1458,7 +1470,7 @@ func (r *OracleRestDataServiceReconciler) createConnectionString(m *dbapi.Oracle
 		return requeueY, nil
 	}
 
-	_, err = dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "init-ords",
+	_, err = dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, m.Name,
 		ctx, req, true, "bash", "-c",
 		fmt.Sprintf("mkdir -p /opt/oracle/variables && echo %[1]s > /opt/oracle/variables/%[2]s",
 			fmt.Sprintf(dbcommons.DbConnectString, adminPassword, n.Name, n.Status.Pdbname),
