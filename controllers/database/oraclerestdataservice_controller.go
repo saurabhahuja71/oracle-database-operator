@@ -155,6 +155,12 @@ func runOracleRestSQLPlusScript(
 		log.Error(err, "sqlplus command execution failed")
 		return "", err
 	}
+	upperOut := strings.ToUpper(out)
+	if strings.Contains(upperOut, "ORA-") || strings.Contains(upperOut, "PLS-") || strings.Contains(upperOut, "SP2-") {
+		err = fmt.Errorf("sqlplus returned an Oracle error: %s", strings.TrimSpace(out))
+		log.Error(err, "sqlplus script failed")
+		return out, err
+	}
 
 	return out, nil
 }
@@ -978,11 +984,39 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 				initContainers = append(initContainers, corev1.Container{
 					Name:    "init-ords",
 					Image:   m.Spec.Image.PullFrom,
-					Command: []string{"/bin/sh"},
-					Args: []string{
-						"-c",
-						fmt.Sprintf("while [ ! -f /opt/oracle/variables/%s ]; do sleep 0.5; done", "conn_string.txt"),
-					},
+					Command: []string{"/bin/sh", "-c", dbcommons.InitORDSCMD},
+					Env: func() []corev1.EnvVar {
+						adminSecretName, adminSecretKey, _, adminSecretRefFound := dbapi.ResolveOracleRestDataServiceAdminSecretRef(m)
+						ordsSecretName, ordsSecretKey, _, ordsSecretRefFound := dbapi.ResolveOracleRestDataServiceOrdsSecretRef(m)
+						env := []corev1.EnvVar{
+							{Name: "SETUP_ONLY", Value: "true"},
+							{Name: "ORACLE_HOST", Value: n.Name},
+							{Name: "ORACLE_PORT", Value: "1521"},
+							{Name: "ORACLE_SERVICE", Value: func() string {
+								if m.Spec.OracleService != "" {
+									return m.Spec.OracleService
+								}
+								return n.Spec.Sid
+							}()},
+							{Name: "ORDS_USER", Value: func() string {
+								if m.Spec.OrdsUser != "" {
+									return m.Spec.OrdsUser
+								}
+								return "ORDS_PUBLIC_USER"
+							}()},
+						}
+						if adminSecretRefFound {
+							env = append(env, corev1.EnvVar{Name: "ORACLE_PWD", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{Name: adminSecretName}, Key: adminSecretKey,
+							}}})
+						}
+						if ordsSecretRefFound {
+							env = append(env, corev1.EnvVar{Name: "ORDS_PWD", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{Name: ordsSecretName}, Key: ordsSecretKey,
+							}}})
+						}
+						return env
+					}(),
 					VolumeMounts: []corev1.VolumeMount{
 						{
 							MountPath: "/etc/ords/config/",
@@ -1814,6 +1848,11 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 
 	apexInstalled := "APEXVERSION:"
 	if !strings.Contains(out, apexInstalled) {
+		if strings.Contains(strings.ToLower(out), "no rows selected") {
+			m.Status.Status = dbcommons.StatusReady
+			r.Recorder.Eventf(m, corev1.EventTypeNormal, "Apex Verification", "APEX is not installed; skipping APEX configuration")
+			return requeueN
+		}
 		eventReason := "Apex Verification"
 		eventMsg := "Unable to determine Apex version, retrying..."
 		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, "%s", eventMsg)
