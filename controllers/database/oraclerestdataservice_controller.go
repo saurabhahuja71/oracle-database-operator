@@ -1002,7 +1002,7 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 			Containers: []corev1.Container{{
 				Name:    m.Name,
 				Image:   m.Spec.Image.PullFrom,
-				Command: []string{"/usr/local/bin/ords"},
+				Command: []string{"/usr/bin/ords"},
 				Args:    []string{"--config", "/etc/ords/config", "serve", "--port", strconv.FormatInt(int64(ordsHTTPPort), 10)},
 				Ports: func() []corev1.ContainerPort {
 					ports := []corev1.ContainerPort{
