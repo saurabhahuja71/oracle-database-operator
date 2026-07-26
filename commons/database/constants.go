@@ -328,36 +328,37 @@ const EnableORDSSchemaSQL string = "\nALTER SESSION SET CONTAINER=%[4]s;" +
 			"\nsed -i 's,standalone.static.path=/opt/oracle/ords/doc_root/i,standalone.static.path=/opt/oracle/ords/config/apex/images,g' /opt/oracle/ords/config/ords/standalone/standalone.properties"
 	*/
 
-const InitORDSCMD string = "if [ -f $ORDS_HOME/config/ords/defaults.xml ]; then exit ;fi;" +
-	"\nexport APEXI=$ORDS_HOME/config/apex/images" +
-	"\n$ORDS_HOME/runOrds.sh --setuponly" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.enabled true" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.auth.enabled true" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.management.services.disabled false" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.admin.enabled true" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property dbc.auth.enabled true" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property restEnabledSql.active true" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property db.serviceNameSuffix \"\" " + // Mandatory when ORDS Installing at CDB Level -> Maps PDB's
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.InitialLimit 5" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.MaxLimit 20" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.InactivityTimeout 300" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property feature.sdw true" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property security.verifySSL false" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.maxRows 1000" +
-	"\nmkdir -p $ORDS_HOME/config/ords/conf" +
-	"\numask 177" +
-	"\necho db.cdb.adminUser=C##DBAPI_CDB_ADMIN AS SYSDBA > cdbAdmin.properties" +
-	"\necho db.cdb.adminUser.password=\"${ORACLE_PWD}\" >> cdbAdmin.properties" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_pu cdbAdmin.properties" +
-	"\nrm -f cdbAdmin.properties" +
-	"\necho db.adminUser=C##_DBAPI_PDB_ADMIN > pdbAdmin.properties" +
-	"\necho db.adminUser.password=\"${ORACLE_PWD}\">> pdbAdmin.properties" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_pu pdbAdmin.properties" +
-	"\nrm -f pdbAdmin.properties" +
-	"\necho -e \"${ORDS_PWD}\n${ORDS_PWD}\" > sqladmin.passwd" +
-	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war user ${ORDS_USER} \"SQL Administrator , System Administrator , SQL Developer , oracle.dbtools.autorest.any.schema \" < sqladmin.passwd" +
-	"\nrm -f sqladmin.passwd" +
-	"\numask 022"
+// InitORDSCMD installs ORDS using the CLI shipped in the ORDS 26.x image.
+// The old runOrds.sh/ords.war workflow is not present in that image.  Keep a
+// marker in the persistent configuration volume so a pod restart does not
+// reinstall ORDS unnecessarily; a missing marker causes an install/upgrade.
+const InitORDSCMD string = "set -eu" +
+	"\nORDS_CONFIG=/etc/ords/config" +
+	"\nORDS_INSTALL_MARKER=\"${ORDS_CONFIG}/.ords-installed\"" +
+	"\nif [ -f \"${ORDS_INSTALL_MARKER}\" ]; then exit 0; fi" +
+	"\n: \"${ORACLE_HOST:?ORACLE_HOST is required}\"" +
+	"\n: \"${ORACLE_PORT:?ORACLE_PORT is required}\"" +
+	"\n: \"${ORACLE_SERVICE:?ORACLE_SERVICE is required}\"" +
+	"\n: \"${ORACLE_PWD:?ORACLE_PWD is required}\"" +
+	"\n: \"${ORDS_PWD:?ORDS_PWD is required}\"" +
+	"\nmkdir -p \"${ORDS_CONFIG}\"" +
+	"\numask 077" +
+	"\nORDS_PASSWORD_FILE=\"/tmp/ords-passwords.$$\"" +
+	"\ntrap 'rm -f \"${ORDS_PASSWORD_FILE}\"' 0" +
+	"\nprintf '%s\\n%s\\n' \"${ORACLE_PWD}\" \"${ORDS_PWD}\" > \"${ORDS_PASSWORD_FILE}\"" +
+	"\n/usr/bin/ords --config \"${ORDS_CONFIG}\" install" +
+	" --db-hostname \"${ORACLE_HOST}\"" +
+	" --db-port \"${ORACLE_PORT}\"" +
+	" --db-servicename \"${ORACLE_SERVICE}\"" +
+	" --admin-user \"SYS AS SYSDBA\"" +
+	" --db-user \"${ORDS_USER}\"" +
+	" --proxy-user" +
+	" --password-stdin" +
+	" --feature-db-api true" +
+	" --feature-rest-enabled-sql true" +
+	" --feature-sdw true" +
+	" --password-stdin < \"${ORDS_PASSWORD_FILE}\"" +
+	"\ntouch \"${ORDS_INSTALL_MARKER}\""
 
 const DbConnectString string = "CONN_STRING=sys/%[1]s@%[2]s:1521/%[3]s"
 
