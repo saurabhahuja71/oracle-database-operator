@@ -366,7 +366,7 @@ const InitORDSCMD string = "set -eu" +
 	"\n/usr/bin/ords --config \"${ORDS_CONFIG}\" config --db-pool \"${PDB_POOL}\" set db.port \"${ORACLE_PORT}\"" +
 	"\n/usr/bin/ords --config \"${ORDS_CONFIG}\" config --db-pool \"${PDB_POOL}\" set db.servicename \"${DBSERVICENAME}\"" +
 	"\n/usr/bin/ords --config \"${ORDS_CONFIG}\" config --db-pool \"${PDB_POOL}\" set db.username \"${ORDS_USER}\"" +
-	"\nprintf '%s\\n' \"${ORDS_PWD}\" | /usr/bin/ords --config \"${ORDS_CONFIG}\" config --db-pool \"${PDB_POOL}\" secret db.password"
+	"\nprintf '%s\\n%s\\n' \"${ORDS_PWD}\" \"${ORDS_PWD}\" | /usr/bin/ords --config \"${ORDS_CONFIG}\" config --db-pool \"${PDB_POOL}\" secret db.password"
 
 const DbConnectString string = "CONN_STRING=sys/%[1]s@%[2]s:1521/%[3]s"
 
