@@ -1439,6 +1439,18 @@ func (r *OracleRestDataServiceReconciler) createConnectionString(m *dbapi.Oracle
 		return requeueY, nil
 	}
 
+	mainContainerRunning := false
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		if containerStatus.Name == m.Name {
+			mainContainerRunning = containerStatus.State.Running != nil
+			break
+		}
+	}
+	if !mainContainerRunning {
+		r.Log.Info("Waiting for the ORDS container to be created and running", "container", m.Name)
+		return requeueY, nil
+	}
+
 	r.Log.Info("Creating Connection String file...")
 
 	// Querying the secret
