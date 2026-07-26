@@ -387,7 +387,7 @@ const UninstallORDSCMD string = "\numask 177" +
 
 const ORDSDefaultHTTPPort int32 = 8080
 
-const GetORDSStatus string = "curl -sSkvf -k -X GET http://localhost:%d/ords/_/db-api/stable/metadata-catalog/"
+const GetORDSStatus string = "curl -sSkvf -k -X GET http://localhost:%d/ords/_/landing"
 
 const ORDSReadinessProbe string = "curl -sSkvf -k -X GET http://localhost:%d/ords/_/landing"
 

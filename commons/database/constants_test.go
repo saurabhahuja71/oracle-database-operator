@@ -16,3 +16,14 @@ func TestDisableFSFOCMDTerminatesStopObserverCommand(t *testing.T) {
 		t.Fatalf("STOP OBSERVER command is missing a terminator before DISABLE FAST_START FAILOVER: %q", script)
 	}
 }
+
+func TestGetORDSStatusUsesUnmappedLandingEndpoint(t *testing.T) {
+	statusCommand := fmt.Sprintf(GetORDSStatus, ORDSDefaultHTTPPort)
+
+	if !strings.Contains(statusCommand, "/ords/_/landing") {
+		t.Fatalf("expected ORDS status command to use landing endpoint, got %q", statusCommand)
+	}
+	if strings.Contains(statusCommand, "/db-api/") {
+		t.Fatalf("ORDS status command must not require a database mapping, got %q", statusCommand)
+	}
+}
