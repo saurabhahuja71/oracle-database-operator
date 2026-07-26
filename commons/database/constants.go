@@ -275,7 +275,7 @@ const GetUserORDSSchemaStatusSQL string = "alter session set container=%[2]s;" +
 	"\nselect 'STATUS:'||status as status from ords_metadata.ords_schemas where upper(parsing_schema) = upper('%[1]s');"
 
 const CreateORDSSchemaSQL = "\nALTER SESSION SET CONTAINER=%[3]s;" +
-	"\nCREATE USER %[1]s IDENTIFIED BY \\\"%[2]s\\\";" +
+	"\nCREATE USER %[1]s IDENTIFIED BY \"%[2]s\";" +
 	"\nGRANT CONNECT, RESOURCE, DBA, PDB_DBA TO %[1]s;"
 
 const EnableORDSSchemaSQL string = "\nALTER SESSION SET CONTAINER=%[4]s;" +
