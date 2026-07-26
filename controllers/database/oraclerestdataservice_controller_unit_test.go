@@ -5,11 +5,20 @@ import (
 	"testing"
 
 	dbapi "github.com/oracle/oracle-database-operator/apis/database/v4"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
 func TestOracleRestDataServicePodUsesORDSImageCommand(t *testing.T) {
-	reconciler := &OracleRestDataServiceReconciler{}
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add core scheme: %v", err)
+	}
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add database scheme: %v", err)
+	}
+	reconciler := &OracleRestDataServiceReconciler{Scheme: scheme}
 	ords := &dbapi.OracleRestDataService{
 		Spec: dbapi.OracleRestDataServiceSpec{
 			Image: dbapi.OracleRestDataServiceImage{
