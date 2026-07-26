@@ -353,7 +353,6 @@ const InitORDSCMD string = "set -eu" +
 	" --admin-user \"SYS AS SYSDBA\"" +
 	" --db-user \"${ORDS_USER}\"" +
 	" --proxy-user" +
-	" --password-stdin" +
 	" --feature-db-api true" +
 	" --feature-rest-enabled-sql true" +
 	" --feature-sdw true" +
