@@ -35,7 +35,6 @@
 </p>
 </div>
 
-
 # Oracle Database Operator for Kubernetes
 
 The Oracle Database Operator extends the Kubernetes API by introducing custom resources and controllers that enable the provisioning, management, and lifecycle automation of Oracle Database workloads and associated services on Kubernetes.
@@ -73,7 +72,7 @@ Version 2.2 introduces expanded database lifecycle automation, stronger reconcil
 | **AutonomousContainerDatabase** | • OCI lifecycle-state validation and finalizer-based cleanup<br>• Kubernetes-to-OCI state synchronization |
 | **AutonomousDatabaseBackup / Restore** | • Target validation and owner references<br>• Point-in-time restore and OCI work-request integration |
 | **DbcsSystem** | • Pluggable database create/delete/status management<br>• Data Guard and KMS vault workflows with retry-safe status updates |
-| **LREST / LRPDB** | • ReplicaSet, TLS/CA secret, and service automation<br>• Declarative PDB lifecycle, SQL/configuration drift monitoring, and PDB auto-discovery |
+| **Multitenant controllers (LREST / LRPDB)** | • Internal comunication protocol improvement and cofiguration simplification - No need to specify https password <br>  • Creating application users on pdb using k8s secrets  <br> • Monitor pdb init parameters with reconciliation loop <br>  • Code optimization  <br> • Reset bitmask status simplification <br> • Load tnsname.ora topology |
 | **OracleRestart** | • Phased reconciliation for validation, storage, workload, and finalization<br>• ASM disk lifecycle with static/dynamic PV/PVC handling |
 | **OracleRestDataService / ORDS Services** | • Expanded ORDS lifecycle, TLS, secret, configuration, and status management |
 | **RacDatabase** | • Expanded RAC and ASM storage lifecycle<br>• Disk/PVC provisioning, Data Guard integration, and validation |
@@ -86,6 +85,7 @@ Version 2.2 introduces expanded database lifecycle automation, stronger reconcil
 | **Operator platform** | • New `network.oracle.com/v4` API and TrafficManager CRD<br>• Secure HTTPS metrics, hardened manager security context, expanded RBAC/webhooks, compatibility webhooks, network policy, samples, and test coverage |
 
 See the Traffic Manager documentation and sample manifests under [`docs/trafficmanager/`](./docs/trafficmanager/).
+
 ## Platform Compatibility
 
 This production release has been installed and tested on the following platforms:
@@ -196,19 +196,25 @@ These optional manifests are cluster-scoped. Review them before applying, and av
 Before using this quick start, complete the [prerequisites](#prerequisites): install [cert-manager](#install-cert-manager), choose a [deployment scope](#choose-deployment-scope), and apply the required RBAC. For namespace-scoped deployment, use `scripts/generate-namespace-install.sh` so RBAC and `WATCH_NAMESPACE` are generated from the same namespace list.
 
 1. Verify the operator service account permissions in each watched namespace:
+
    ```sh
    kubectl auth can-i list lrpdbs.database.oracle.com \
      --as=system:serviceaccount:oracle-database-operator-system:oracle-database-operator-controller-manager \
      -n <watched-namespace>
    ```
+
 2. Apply the operator system manifest:
+
    ```sh
    kubectl apply -f oracle-database-operator-system.yaml
    ```
+
 3. Verify the operator pods are healthy:
+
    ```sh
    kubectl get pods -n oracle-database-operator-system
    ```
+
 4. Apply the custom resource for the controller you want to use.
 
 If you want a more detailed installation walkthrough, see [docs/installation/OPERATOR_INSTALLATION_README.md](./docs/installation/OPERATOR_INSTALLATION_README.md).
@@ -426,14 +432,13 @@ kubectl get crd -o name \
   | xargs --no-run-if-empty kubectl delete
 ```
 
-
 ## Documentation for the supported Oracle Database configurations
 
-* [Oracle Autonomous Database](https://docs.oracle.com/en-us/iaas/Content/Database/Concepts/adboverview.htm)
-* [Components of Dedicated Autonomous Database](https://docs.oracle.com/en-us/iaas/autonomous-database/doc/components.html)
-* [Oracle Database Single Instance](https://docs.oracle.com/en/database/oracle/oracle-database/)
-* [Oracle Globally Distributed Database](https://docs.oracle.com/en/database/oracle/oracle-database/21/shard/index.html)
-* [Oracle Database Cloud Service](https://docs.oracle.com/en/database/database-cloud-services.html)
+- [Oracle Autonomous Database](https://docs.oracle.com/en-us/iaas/Content/Database/Concepts/adboverview.htm)
+- [Components of Dedicated Autonomous Database](https://docs.oracle.com/en-us/iaas/autonomous-database/doc/components.html)
+- [Oracle Database Single Instance](https://docs.oracle.com/en/database/oracle/oracle-database/)
+- [Oracle Globally Distributed Database](https://docs.oracle.com/en/database/oracle/oracle-database/21/shard/index.html)
+- [Oracle Database Cloud Service](https://docs.oracle.com/en/database/database-cloud-services.html)
 
 ## Contributing
 

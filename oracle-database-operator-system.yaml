@@ -9179,17 +9179,6 @@ spec:
                           type: string
                         type: object
                     type: object
-                  pairs:
-                    items:
-                      properties:
-                        primary:
-                          type: string
-                        standby:
-                          type: string
-                        type:
-                          type: string
-                      type: object
-                    type: array
                   policy:
                     properties:
                       fastStartFailover:
@@ -9277,19 +9266,6 @@ spec:
                 type: string
               fastStartFailover:
                 type: string
-              observedPairs:
-                items:
-                  properties:
-                    message:
-                      type: string
-                    primary:
-                      type: string
-                    standby:
-                      type: string
-                    state:
-                      type: string
-                  type: object
-                type: array
               observedTopologyHash:
                 type: string
               operations:
@@ -12355,6 +12331,12 @@ spec:
                 type: object
               databaseRef:
                 type: string
+              httpPort:
+                default: 8080
+                format: int32
+                maximum: 65535
+                minimum: 1
+                type: integer
               image:
                 properties:
                   pullFrom:
@@ -12528,6 +12510,12 @@ spec:
                 type: object
               databaseRef:
                 type: string
+              httpPort:
+                default: 8080
+                format: int32
+                maximum: 65535
+                minimum: 1
+                type: integer
               image:
                 properties:
                   pullFrom:
@@ -15197,17 +15185,6 @@ spec:
                                       type: string
                                     type: object
                                 type: object
-                              pairs:
-                                items:
-                                  properties:
-                                    primary:
-                                      type: string
-                                    standby:
-                                      type: string
-                                    type:
-                                      type: string
-                                  type: object
-                                type: array
                               policy:
                                 properties:
                                   fastStartFailover:
@@ -18005,6 +17982,14 @@ spec:
                       default: 50
                       format: int32
                       type: integer
+                    storageSource:
+                      properties:
+                        oci:
+                          properties:
+                            volumeBackupId:
+                              type: string
+                          type: object
+                      type: object
                     validateNetwork:
                       type: boolean
                   required:
@@ -18124,6 +18109,10 @@ spec:
                         type: object
                       type: array
                     externalServiceAnnotations:
+                      additionalProperties:
+                        type: string
+                      type: object
+                    nodeSelector:
                       additionalProperties:
                         type: string
                       type: object
@@ -18414,6 +18403,14 @@ spec:
                       default: 50
                       format: int32
                       type: integer
+                    storageSource:
+                      properties:
+                        oci:
+                          properties:
+                            volumeBackupId:
+                              type: string
+                          type: object
+                      type: object
                   required:
                   - shardPreFixName
                   type: object
@@ -18795,17 +18792,6 @@ spec:
                                       type: string
                                     type: object
                                 type: object
-                              pairs:
-                                items:
-                                  properties:
-                                    primary:
-                                      type: string
-                                    standby:
-                                      type: string
-                                    type:
-                                      type: string
-                                  type: object
-                                type: array
                               policy:
                                 properties:
                                   fastStartFailover:
@@ -20468,17 +20454,6 @@ spec:
                                       type: string
                                     type: object
                                 type: object
-                              pairs:
-                                items:
-                                  properties:
-                                    primary:
-                                      type: string
-                                    standby:
-                                      type: string
-                                    type:
-                                      type: string
-                                  type: object
-                                type: array
                               policy:
                                 properties:
                                   fastStartFailover:
@@ -22052,7 +22027,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        image: lin.ocir.io/intsanjaysingh/operator/mmalvezz_lrest_2.2:psaini_latest
+        image: lin.ocir.io/intsanjaysingh/operator/mmalvezz_lrest_2.2:intmon_latest
         imagePullPolicy: Always
         name: manager
         ports:

@@ -47,6 +47,10 @@
 
 ![generaleschema](./images/Generalschema2.jpg)
 
+The multitenant controllers enable the capability of pdb lifecycle  management. For each physical pdb  there is one CRD instance running in the kubernetes cluster. LREST controller manages comunication between the pdb/CRD (LRPDB) and the Container Database leveraging a dedicated rest server. The Container Database can be anywhere.
+
+See also the [Quick Start](./usecase/README.md) for the shortest lrest lrpdb setup using a reachable Oracle Database.
+
 ## 1. <a name='WHATSNEW'></a>WHAT'S NEW
 
 ![kubectlget_format](./images/KubectlGetSchema2.jpg)
@@ -68,6 +72,10 @@
 * Use secrets to create PDB application users.
 
 * Generate a bitmap that contains a tnsnames.ora file with your database network topology.
+
+* Monitor pdb init parameters with reconciliation loop.
+
+* Reset bitmask status simplification.
 
 ### 1.1. <a name='KUBECTLGETLRPDBFORMAT'></a>KUBECTL GET LRPDB FORMAT
 

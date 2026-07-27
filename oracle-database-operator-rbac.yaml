@@ -307,7 +307,6 @@ rules:
 - apiGroups:
   - privateai.oracle.com
   resources:
-  - agentfactories
   - privateais
   verbs:
   - get
@@ -318,14 +317,12 @@ rules:
 - apiGroups:
   - privateai.oracle.com
   resources:
-  - agentfactories/finalizers
   - privateais/finalizers
   verbs:
   - update
 - apiGroups:
   - privateai.oracle.com
   resources:
-  - agentfactories/status
   - privateais/status
   verbs:
   - get

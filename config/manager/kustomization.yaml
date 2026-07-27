@@ -10,4 +10,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: lin.ocir.io/intsanjaysingh/operator/mmalvezz_lrest_2.2
-  newTag: psaini_latest
+  newTag: intmon_latest
