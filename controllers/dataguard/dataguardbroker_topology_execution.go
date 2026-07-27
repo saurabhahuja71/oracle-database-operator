@@ -351,10 +351,16 @@ func buildDataguardBrokerAuthWalletBuildCommand(state *dataguardTopologyResolved
 		if member == nil {
 			continue
 		}
-		for _, alias := range []string{member.Alias, member.StaticAlias} {
+
+		for _, alias := range []string{
+			member.Alias,
+			member.StaticAlias,
+			member.ConnectString,
+		} {
 			if strings.TrimSpace(alias) == "" {
 				continue
 			}
+
 			lines = append(lines, fmt.Sprintf(
 				"mkstore -wrl \"$WALLET_DIR\" -createCredential %s %s %s < \"$WALLET_DIR/.wallet.passwd\" >/dev/null",
 				shellQuote(strings.TrimSpace(alias)),
@@ -362,6 +368,23 @@ func buildDataguardBrokerAuthWalletBuildCommand(state *dataguardTopologyResolved
 				shellQuote(member.AdminPassword),
 			))
 		}
+
+		// mkstore requires the raw descriptor, not the quoted DGMGRL literal.
+		staticDescriptor, err := buildDataguardStaticConnectDescriptor(member)
+		if err != nil || strings.TrimSpace(staticDescriptor) == "" {
+			continue
+		}
+
+		lines = append(lines, fmt.Sprintf(
+			"STATIC_CONNECT_IDENTIFIER=%s",
+			shellQuote(staticDescriptor),
+		))
+
+		lines = append(lines, fmt.Sprintf(
+			"mkstore -wrl \"$WALLET_DIR\" -createCredential \"$STATIC_CONNECT_IDENTIFIER\" %s %s < \"$WALLET_DIR/.wallet.passwd\" >/dev/null",
+			shellQuote("sys"),
+			shellQuote(member.AdminPassword),
+		))
 	}
 	lines = append(lines, "rm -f \"$WALLET_DIR/.wallet.passwd\"")
 	return strings.Join(lines, "\n") + "\n"
@@ -832,6 +855,125 @@ func runDataguardBrokerRunnerDGMGRLScript(ctx context.Context, r *DataguardBroke
 	return execDataguardBrokerRunnerShell(ctx, r, broker, req, true, command)
 }
 
+func openDataguardTopologyPDBs(
+	ctx context.Context,
+	r *DataguardBrokerReconciler,
+	broker *dbapi.DataguardBroker,
+	req ctrl.Request,
+	member *dataguardTopologyResolvedMember,
+) error {
+	if member == nil {
+		return fmt.Errorf("topology member is nil")
+	}
+
+	// PDB recovery applies only to local SIDB members.
+	if member.LocalRef == nil {
+		return nil
+	}
+
+	kind := strings.TrimSpace(member.LocalRef.Kind)
+	if kind != "" && !strings.EqualFold(kind, "SingleInstanceDatabase") {
+		return nil
+	}
+
+	namespace := strings.TrimSpace(member.LocalRef.Namespace)
+	if namespace == "" {
+		namespace = broker.Namespace
+	}
+
+	var sidb dbapi.SingleInstanceDatabase
+	if err := r.Get(
+		ctx,
+		types.NamespacedName{
+			Namespace: namespace,
+			Name:      strings.TrimSpace(member.LocalRef.Name),
+		},
+		&sidb,
+	); err != nil {
+		return fmt.Errorf(
+			"failed to resolve local SIDB %q for PDB recovery: %w",
+			member.Name,
+			err,
+		)
+	}
+
+	// Nothing to open for a non-CDB SIDB.
+	if strings.TrimSpace(sidb.Spec.Pdbname) == "" &&
+		strings.TrimSpace(sidb.Status.Pdbname) == "" {
+		return nil
+	}
+
+	alias := strings.TrimSpace(member.Alias)
+	if alias == "" {
+		return fmt.Errorf(
+			"topology member %q does not have a connect alias",
+			member.Name,
+		)
+	}
+
+	connectArg := oracleConnectDescriptor(
+		"sys",
+		member.AdminPassword,
+		alias,
+		true,
+		member.UseAuthWallet,
+	)
+
+	script := fmt.Sprintf(`connect %s
+whenever sqlerror exit sql.sqlcode
+alter pluggable database all open;
+exit
+`, connectArg)
+
+	scriptPath := "/tmp/dg-open-pdbs.sql"
+	writeFile := writeDataguardRunnerFile
+	if !member.UseAuthWallet {
+		writeFile = writeDataguardRunnerSecretFile
+	}
+
+	if err := writeFile(
+		ctx,
+		r,
+		broker,
+		req,
+		scriptPath,
+		script,
+	); err != nil {
+		return err
+	}
+
+	command := mirrorDataguardRunnerCommandToContainerLogs(
+		fmt.Sprintf("sqlplus -s /nolog @%s", shellQuote(scriptPath)),
+		fmt.Sprintf("rm -f %s", shellQuote(scriptPath)),
+	)
+
+	out, err := execDataguardBrokerRunnerShell(
+		ctx,
+		r,
+		broker,
+		req,
+		true,
+		command,
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"failed to open PDBs for topology member %q: %w",
+			member.DBUniqueName,
+			err,
+		)
+	}
+
+	if strings.Contains(strings.ToUpper(out), "ORA-") {
+		return fmt.Errorf(
+			"failed to open PDBs for topology member %q: %s",
+			member.DBUniqueName,
+			strings.TrimSpace(out),
+		)
+	}
+
+	return nil
+}
+
 func buildDataguardRunnerDGMGRLScript(connectMember *dataguardTopologyResolvedMember, script string) string {
 	connectArg := oracleConnectDescriptor("sys", connectMember.AdminPassword, connectMember.Alias, false, connectMember.UseAuthWallet)
 	return fmt.Sprintf("CONNECT %s;\n%s", connectArg, script)
@@ -855,7 +997,7 @@ func queryDataguardConfigurationMembers(ctx context.Context, r *DataguardBrokerR
 		fmt.Sprintf("rm -f %s", shellQuote(scriptPath)),
 	)
 	out, err := execDataguardBrokerRunnerShell(ctx, r, broker, req, true, command)
-	if strings.Contains(out, "ORA-16532") || (err != nil && strings.Contains(err.Error(), "ORA-16532")) {
+	if dataguardBrokerConfigurationMissing(out) || (err != nil && dataguardBrokerConfigurationMissing(err.Error())) {
 		return nil, fmt.Errorf("%w: query through %s", errDataguardTopologyConfigurationMissing, connectMember.DBUniqueName)
 	}
 	if err != nil {
@@ -878,12 +1020,17 @@ func queryDataguardConfigurationMembers(ctx context.Context, r *DataguardBrokerR
 }
 
 func dataguardBrokerOutputError(out string) error {
-	for _, code := range []string{"ORA-16532", "ORA-16584", "ORA-16525"} {
+	for _, code := range []string{"ORA-16532", "ORA-16584", "ORA-16525", "ORA-16596"} {
 		if strings.Contains(out, code) {
 			return fmt.Errorf("dgmgrl returned %s", code)
 		}
 	}
 	return nil
+}
+
+func dataguardBrokerConfigurationMissing(out string) bool {
+	return strings.Contains(out, "ORA-16532") ||
+		strings.Contains(out, "ORA-16596")
 }
 
 func runDataguardTopologyDGMGRLScript(ctx context.Context, r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, req ctrl.Request, state *dataguardTopologyResolvedState, script string) (string, *dataguardTopologyResolvedMember, error) {
@@ -1069,7 +1216,7 @@ func ensureDataguardTopologyBrokerConfiguration(
 	if showErr != nil {
 		combined := showOut + " " + showErr.Error()
 
-		if strings.Contains(combined, "ORA-16532") {
+		if dataguardBrokerConfigurationMissing(combined) {
 			hasConfiguration = false
 		} else if strings.Contains(combined, "ORA-16525") {
 			return fmt.Errorf("oracle data guard broker is not yet available on primary member %s", state.Primary.Name)
@@ -1193,7 +1340,7 @@ func buildDataguardTopologyCreateConfigurationScript(desired *dataguardBrokerDes
 		if err != nil {
 			return "", fmt.Errorf("invalid standby connect identifier: %w", err)
 		}
-		lines = append(lines, fmt.Sprintf("ADD DATABASE %s AS CONNECT IDENTIFIER IS %s MAINTAINED AS PHYSICAL;", memberDBUniqueName, memberConnectID))
+		lines = append(lines, fmt.Sprintf("ADD DATABASE %s AS CONNECT IDENTIFIER IS %s;", memberDBUniqueName, memberConnectID))
 	}
 	for _, member := range state.DesiredPhysicalMembers {
 		memberDBUniqueName, err := dataguardDGMGRLIdentifier(member.DBUniqueName)
@@ -1228,7 +1375,7 @@ func buildDataguardTopologyAddDatabaseScript(desired *dataguardBrokerDesiredSpec
 		if err != nil {
 			return "", fmt.Errorf("invalid missing connect identifier: %w", err)
 		}
-		lines = append(lines, fmt.Sprintf("ADD DATABASE %s AS CONNECT IDENTIFIER IS %s MAINTAINED AS PHYSICAL;", memberDBUniqueName, memberConnectID))
+		lines = append(lines, fmt.Sprintf("ADD DATABASE %s AS CONNECT IDENTIFIER IS %s;", memberDBUniqueName, memberConnectID))
 		lines = append(lines, fmt.Sprintf("EDIT DATABASE %s SET PROPERTY LogXptMode='%s';", memberDBUniqueName, logXptMode))
 		staticID, err := buildDataguardStaticConnectIdentifier(member)
 		if err != nil {
@@ -1290,48 +1437,95 @@ func desiredProtectionMode(desired *dataguardBrokerDesiredSpec) string {
 	return "MAXPERFORMANCE"
 }
 
-func buildDataguardStaticConnectIdentifier(member *dataguardTopologyResolvedMember) (string, error) {
+func buildDataguardStaticConnectDescriptor(member *dataguardTopologyResolvedMember) (string, error) {
 	if member == nil {
 		return "", nil
 	}
+
 	host, err := dataguardTNSHost(member.Endpoint.Host)
 	if err != nil {
 		return "", fmt.Errorf("invalid static connect identifier for member %q: %w", member.Name, err)
 	}
-	serviceName, err := dataguardTNSServiceName(strings.ToUpper(strings.TrimSpace(member.DBUniqueName)) + "_DGMGRL")
+
+	serviceName, err := dataguardTNSServiceName(
+		strings.ToUpper(strings.TrimSpace(member.DBUniqueName)) + "_DGMGRL",
+	)
 	if err != nil {
-		return "", fmt.Errorf("invalid static connect identifier service for member %q: %w", member.Name, err)
+		return "", fmt.Errorf(
+			"invalid static connect identifier service for member %q: %w",
+			member.Name,
+			err,
+		)
 	}
+
 	protocol := strings.ToUpper(strings.TrimSpace(member.Endpoint.Protocol))
 	if protocol == "" {
 		protocol = "TCP"
 	}
+
 	if protocol != "TCP" && protocol != "TCPS" {
-		return "", fmt.Errorf("invalid static connect identifier protocol for member %q: %q", member.Name, member.Endpoint.Protocol)
-	}
-	if member.Endpoint.Port <= 0 {
-		return "", fmt.Errorf("invalid static connect identifier port for member %q: %d", member.Name, member.Endpoint.Port)
+		return "", fmt.Errorf(
+			"invalid static connect identifier protocol for member %q: %q",
+			member.Name,
+			member.Endpoint.Protocol,
+		)
 	}
 
-	descriptor := fmt.Sprintf("(DESCRIPTION=(ADDRESS=(PROTOCOL=%s)(HOST=%s)(PORT=%d))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=%s)))", protocol, host, member.Endpoint.Port, serviceName)
+	if member.Endpoint.Port <= 0 {
+		return "", fmt.Errorf(
+			"invalid static connect identifier port for member %q: %d",
+			member.Name,
+			member.Endpoint.Port,
+		)
+	}
+
+	descriptor := fmt.Sprintf(
+		"(DESCRIPTION=(ADDRESS=(PROTOCOL=%s)(HOST=%s)(PORT=%d))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=%s)))",
+		protocol,
+		host,
+		member.Endpoint.Port,
+		serviceName,
+	)
+
 	if protocol == "TCPS" {
 		security := "(SECURITY=(SSL_SERVER_DN_MATCH=NO"
+
 		if sslServerDN := strings.TrimSpace(member.SSLServerDN); sslServerDN != "" {
 			if err := dbapi.ValidateDataguardSingleLineText("sslServerDN", sslServerDN); err != nil {
-				return "", fmt.Errorf("invalid static connect identifier sslServerDN for member %q: %w", member.Name, err)
+				return "", fmt.Errorf(
+					"invalid static connect identifier sslServerDN for member %q: %w",
+					member.Name,
+					err,
+				)
 			}
 			security += fmt.Sprintf(")(SSL_SERVER_CERT_DN=%s", sslServerDN)
 		}
 
 		if walletDirectory := strings.TrimSpace(member.WalletDirectory); walletDirectory != "" {
 			if err := dbapi.ValidateDataguardSingleLineText("walletDirectory", walletDirectory); err != nil {
-				return "", fmt.Errorf("invalid static connect identifier walletDirectory for member %q: %w", member.Name, err)
+				return "", fmt.Errorf(
+					"invalid static connect identifier walletDirectory for member %q: %w",
+					member.Name,
+					err,
+				)
 			}
 			security += fmt.Sprintf(")(MY_WALLET_DIRECTORY=%s", walletDirectory)
 		}
 
 		security += "))"
 		descriptor = strings.TrimSuffix(descriptor, ")") + security + ")"
+	}
+
+	return descriptor, nil
+}
+
+func buildDataguardStaticConnectIdentifier(member *dataguardTopologyResolvedMember) (string, error) {
+	descriptor, err := buildDataguardStaticConnectDescriptor(member)
+	if err != nil {
+		return "", err
+	}
+	if descriptor == "" {
+		return "", nil
 	}
 
 	return dataguardDGMGRLStringLiteral(descriptor)
@@ -1541,7 +1735,14 @@ func updateDataguardTopologyReconcileStatus(ctx context.Context, r *DataguardBro
 			standbys = append(standbys, strings.ToUpper(dbUniqueName))
 		}
 		if member != nil {
-			if err := updateLocalSIDBDataguardMemberStatus(ctx, r, broker, member, role); err != nil {
+			if err := reconcileLocalSIDBDataguardMemberStatus(
+				ctx,
+				r,
+				broker,
+				req,
+				member,
+				role,
+			); err != nil {
 				return err
 			}
 			ready, message, err := dataguardTopologyLocalMemberReady(ctx, r, broker, member)
@@ -1647,11 +1848,20 @@ func dataguardTopologyMissingStandbys(state *dataguardTopologyResolvedState, cur
 	return missing
 }
 
-func updateLocalSIDBDataguardMemberStatus(ctx context.Context, r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, member *dataguardTopologyResolvedMember, role string) error {
+func reconcileLocalSIDBDataguardMemberStatus(
+	ctx context.Context,
+	r *DataguardBrokerReconciler,
+	broker *dbapi.DataguardBroker,
+	req ctrl.Request,
+	member *dataguardTopologyResolvedMember,
+	role string,
+) error {
 	if member == nil || member.LocalRef == nil {
 		return nil
 	}
-	if kind := strings.TrimSpace(member.LocalRef.Kind); kind != "" && !strings.EqualFold(kind, "SingleInstanceDatabase") {
+
+	if kind := strings.TrimSpace(member.LocalRef.Kind); kind != "" &&
+		!strings.EqualFold(kind, "SingleInstanceDatabase") {
 		return nil
 	}
 
@@ -1659,27 +1869,67 @@ func updateLocalSIDBDataguardMemberStatus(ctx context.Context, r *DataguardBroke
 	if namespace == "" {
 		namespace = broker.Namespace
 	}
+
 	var sidb dbapi.SingleInstanceDatabase
-	if err := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: strings.TrimSpace(member.LocalRef.Name)}, &sidb); err != nil {
+	if err := r.Get(
+		ctx,
+		types.NamespacedName{
+			Namespace: namespace,
+			Name:      strings.TrimSpace(member.LocalRef.Name),
+		},
+		&sidb,
+	); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
 
+	previousRole := normalizeTopologyMemberRole(sidb.Status.Role)
+	observedRole := normalizeTopologyMemberRole(role)
+
+	// DGMGRL standby role conversion can leave user PDBs mounted.
+	// Recover the PDB before publishing the newly observed role.
+	standbyRoleConversion :=
+		(previousRole == "PHYSICAL_STANDBY" &&
+			observedRole == "SNAPSHOT_STANDBY") ||
+			(previousRole == "SNAPSHOT_STANDBY" &&
+				observedRole == "PHYSICAL_STANDBY")
+
+	if standbyRoleConversion {
+		if err := openDataguardTopologyPDBs(
+			ctx,
+			r,
+			broker,
+			req,
+			member,
+		); err != nil {
+			return fmt.Errorf(
+				"failed to recover PDBs for local SIDB %q during role transition %s -> %s: %w",
+				sidb.Name,
+				previousRole,
+				observedRole,
+				err,
+			)
+		}
+	}
+
 	updated := false
-	normalizedRole := strings.ToUpper(strings.TrimSpace(role))
-	if sidb.Status.Role != normalizedRole {
-		sidb.Status.Role = normalizedRole
+
+	if normalizeTopologyMemberRole(sidb.Status.Role) != observedRole {
+		sidb.Status.Role = observedRole
 		updated = true
 	}
+
 	if sidb.Status.DgBroker == nil || *sidb.Status.DgBroker != broker.Name {
 		sidb.Status.DgBroker = &broker.Name
 		updated = true
 	}
+
 	if !updated {
 		return nil
 	}
+
 	return r.Status().Update(ctx, &sidb)
 }
 
@@ -1840,24 +2090,67 @@ func performDataguardTopologyRoleConversion(ctx context.Context, r *DataguardBro
 		currentPrimary = state.Primary
 	}
 	currentRole := currentMembers[strings.ToUpper(targetMember.DBUniqueName)]
+
 	if currentRole == desiredRole {
-		return nil
+		return reconcileLocalSIDBDataguardMemberStatus(
+			ctx,
+			r,
+			broker,
+			req,
+			targetMember,
+			currentRole,
+		)
 	}
+
 	if currentRole != "SNAPSHOT_STANDBY" && currentRole != "PHYSICAL_STANDBY" {
-		return fmt.Errorf("target %q has unexpected live broker role %q", targetMember.DBUniqueName, currentRole)
+		return fmt.Errorf(
+			"target %q has unexpected live broker role %q",
+			targetMember.DBUniqueName,
+			currentRole,
+		)
 	}
-	command := fmt.Sprintf("CONVERT DATABASE %s TO %s;\n", targetMember.DBUniqueName, strings.ReplaceAll(desiredRole, "_", " "))
-	if _, err := runDataguardBrokerRunnerDGMGRLScript(ctx, r, broker, req, currentPrimary, command); err != nil {
+
+	command := fmt.Sprintf(
+		"CONVERT DATABASE %s TO %s;\n",
+		targetMember.DBUniqueName,
+		strings.ReplaceAll(desiredRole, "_", " "),
+	)
+
+	if _, err := runDataguardBrokerRunnerDGMGRLScript(
+		ctx, r, broker, req, currentPrimary, command,
+	); err != nil {
 		return err
 	}
-	updatedMembers, _, err := queryDataguardTopologyConfigurationMembers(ctx, r, broker, req, state)
+
+	updatedMembers, _, err := queryDataguardTopologyConfigurationMembers(
+		ctx, r, broker, req, state,
+	)
 	if err != nil {
-		return fmt.Errorf("%w: unable to verify target role: %v", errDataguardTopologyRoleConversionPending, err)
+		return fmt.Errorf(
+			"%w: unable to verify target role: %v",
+			errDataguardTopologyRoleConversionPending,
+			err,
+		)
 	}
-	if updatedMembers[strings.ToUpper(targetMember.DBUniqueName)] != desiredRole {
-		return fmt.Errorf("%w: target %q is still %q", errDataguardTopologyRoleConversionPending, targetMember.DBUniqueName, updatedMembers[strings.ToUpper(targetMember.DBUniqueName)])
+
+	updatedRole := updatedMembers[strings.ToUpper(targetMember.DBUniqueName)]
+	if updatedRole != desiredRole {
+		return fmt.Errorf(
+			"%w: target %q is still %q",
+			errDataguardTopologyRoleConversionPending,
+			targetMember.DBUniqueName,
+			updatedRole,
+		)
 	}
-	return nil
+
+	return reconcileLocalSIDBDataguardMemberStatus(
+		ctx,
+		r,
+		broker,
+		req,
+		targetMember,
+		updatedRole,
+	)
 }
 
 func dataguardTopologyProtectionModeDGMGRL(mode string) string {
