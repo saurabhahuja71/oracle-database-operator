@@ -1284,6 +1284,11 @@ func shouldRunDataguardPrereqs(m *dbapi.SingleInstanceDatabase) bool {
 	desiredHash := dataguardPrereqsDesiredHash(m)
 	rerunToken := getDataguardPrereqsRerunToken(m)
 	condition := meta.FindStatusCondition(m.Status.Conditions, sidbConditionDataguardPrereqsReady)
+	if condition != nil && condition.Status == metav1.ConditionFalse && condition.Reason == "BrokerConfigInvalid" &&
+		strings.TrimSpace(m.Status.DataguardPrereqsHash) == desiredHash &&
+		strings.TrimSpace(m.Status.DataguardPrereqsRerunToken) == rerunToken {
+		return false
+	}
 	if condition == nil || condition.Status != metav1.ConditionTrue {
 		return true
 	}
@@ -1298,6 +1303,22 @@ func shouldRunDataguardPrereqs(m *dbapi.SingleInstanceDatabase) bool {
 
 func isGeneratedDataguardClientWalletSecret(m *dbapi.SingleInstanceDatabase) bool {
 	return m != nil && getTcpsClientWalletSecretOverride(m) == ""
+}
+func dataguardPrereqsStatusHealthy(output string) bool {
+	for _, line := range strings.Split(output, "\n") {
+		if strings.EqualFold(strings.TrimSpace(line), "BROKER_CONFIG_FILES_VALID=true") {
+			return true
+		}
+	}
+	return false
+}
+func (r *SingleInstanceDatabaseReconciler) validateDataguardPrereqs(readyPod corev1.Pod, ctx context.Context, req ctrl.Request) (bool, error) {
+	output, err := runDataguardPrereqsActionInPod(r, readyPod, ctx, req, "status")
+	if err != nil {
+		return false, err
+	}
+	r.Log.Info("Data Guard prerequisite validation output : \n"+output, "pod", readyPod.Name)
+	return dataguardPrereqsStatusHealthy(output), nil
 }
 
 func getDataguardClientWalletSourceDir(m *dbapi.SingleInstanceDatabase) string {
@@ -5839,6 +5860,17 @@ func (r *SingleInstanceDatabaseReconciler) configDataguardPrereqs(m *dbapi.Singl
 		return requeueN, nil
 	}
 	if !shouldRunDataguardPrereqs(m) {
+		healthy, err := r.validateDataguardPrereqs(readyPod, ctx, req)
+		if err != nil {
+			r.Log.Error(err, "Error validating Data Guard prerequisites", "pod", readyPod.Name)
+			return requeueY, nil
+		}
+		if !healthy {
+			setSIDBDataguardPrereqsCondition(m, metav1.ConditionFalse, "BrokerConfigInvalid", "Data Guard broker configuration files are missing or empty; automatic repair was not attempted")
+			if err := r.Status().Update(ctx, m); err != nil {
+				return requeueY, err
+			}
+		}
 		return requeueN, nil
 	}
 
@@ -5861,6 +5893,17 @@ func (r *SingleInstanceDatabaseReconciler) configDataguardPrereqs(m *dbapi.Singl
 	}
 
 	r.Log.Info("configureDataguardPrereqs Output : \n" + out)
+	healthy, validationErr := r.validateDataguardPrereqs(readyPod, ctx, req)
+	if validationErr != nil || !healthy {
+		if validationErr != nil {
+			r.Log.Error(validationErr, "Data Guard prerequisite validation failed after configuration", "pod", readyPod.Name)
+		}
+		setSIDBDataguardPrereqsCondition(m, metav1.ConditionFalse, "BrokerConfigInvalid", "Data Guard prerequisite script completed but broker configuration files could not be validated")
+		if err := r.Status().Update(ctx, m); err != nil {
+			return requeueY, err
+		}
+		return requeueY, nil
+	}
 	m.Status.DataguardPrereqsHash = desiredHash
 	m.Status.DataguardPrereqsRerunToken = rerunToken
 	setSIDBDataguardPrereqsCondition(m, metav1.ConditionTrue, "Configured", "database-side Data Guard broker prerequisites are configured")
