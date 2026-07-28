@@ -64,11 +64,13 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -312,7 +314,6 @@ func (r *PrivateAiReconciler) updateReconcileStatusOnce(
 		hasPrimaryCondition = false
 	}
 	if hasPrimaryCondition {
-		meta.RemoveStatusCondition(&m.Status.Conditions, condition.Type)
 		meta.SetStatusCondition(&m.Status.Conditions, condition)
 	}
 
@@ -328,7 +329,6 @@ func (r *PrivateAiReconciler) updateReconcileStatusOnce(
 			LastTransitionTime: metav1.Now(),
 			Message:            state.updateLockMsg,
 		}
-		meta.RemoveStatusCondition(&m.Status.Conditions, lockCond.Type)
 		meta.SetStatusCondition(&m.Status.Conditions, lockCond)
 		lockConditionChanged = true
 	} else if existing := lockpolicy.FindStatusCondition(m.Status.Conditions, lockpolicy.DefaultReconcilingConditionType); existing != nil && existing.Status == metav1.ConditionTrue && (state.completed || recErr != nil) {
@@ -340,7 +340,6 @@ func (r *PrivateAiReconciler) updateReconcileStatusOnce(
 			LastTransitionTime: metav1.Now(),
 			Message:            "controller update lock released",
 		}
-		meta.RemoveStatusCondition(&m.Status.Conditions, releaseCond.Type)
 		meta.SetStatusCondition(&m.Status.Conditions, releaseCond)
 		lockConditionChanged = true
 	}
@@ -585,7 +584,7 @@ func (r *PrivateAiReconciler) reconcileWorkload(ctx context.Context, req ctrl.Re
 // SetupWithManager sets up the controller with the Manager.
 func (r *PrivateAiReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&privateaiv4.PrivateAi{}).
+		For(&privateaiv4.PrivateAi{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.ConfigMap{}).
