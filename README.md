@@ -52,7 +52,6 @@ Use this repository to install and validate the operator, ensure it is running c
 - [Install the Operator](#install-the-operator)
 - [Verify Installation](#verify-installation)
 - [Choose Your Guide](#choose-your-guide)
-- [Examples](#examples)
 - [Uninstall the Operator](#uninstall-the-operator)
 - [Contributing](#contributing)
 - [Help](#help)
@@ -80,7 +79,7 @@ Version 2.2 introduces expanded database lifecycle automation, stronger reconcil
 | **DataguardBroker** | • Topology runtime, authentication wallets, validation/provisioning, FSFO observer management, and operation tracking<br>• Idempotent manual switchover support |
 | **DatabaseObserver** | • Safer child-resource ownership and Server-Side Apply<br>• Improved deployment readiness and status handling |
 | **PrivateAI** | • Phased dependency/workload reconciliation and update-lock status<br>• TLS secret lifecycle, support for vLLM and GPU, and rollout tracking |
-| **TrafficManager** *(new)* *(preview mode)*| Oracle Connection Manager (CMAN) endpoints<br>• generated rules, `cman.ora` file mode, and endpoint status |
+| **TrafficManager** *(new)* *(preview mode)*| • Oracle Connection Manager (CMAN) endpoints<br>• generated rules, `cman.ora` file mode, and endpoint status |
 | **Operator platform** | • New `network.oracle.com/v4` API and TrafficManager CRD<br>• Secure HTTPS metrics, hardened manager security context, expanded RBAC/webhooks, compatibility webhooks, network policy, samples, and test coverage |
 
 ## Platform Compatibility
@@ -349,19 +348,6 @@ Traffic Manager works with Single Instance Database or RAC for CMAN-based listen
 
 - [Oracle Database Observability](./docs/observability/README.md)
 - [Oracle Database Operator Metrics](./docs/operator-metrics/README.md)
-
-## Examples
-
-YAML templates are available under [`config/samples/`](./config/samples/). Copy and edit them for your use case.
-
-| Area | Sample location |
-| --- | --- |
-| Single Instance Database, ORDS, Data Guard | [`config/samples/sidb/`](./config/samples/sidb/) |
-| Autonomous Database and ACD | [`config/samples/adb/`](./config/samples/adb/), [`config/samples/acd/`](./config/samples/acd/) |
-| PrivateAI | [`config/samples/privateai_v4_privateai.yaml`](./config/samples/privateai_v4_privateai.yaml), [`docs/privateai/provisioning/`](./docs/privateai/provisioning/) |
-| Traffic Manager (CMAN) | [`docs/trafficmanager/samples/`](./docs/trafficmanager/samples/) |
-| RAC and Oracle Restart | [`config/samples/database_v4_racdatabase.yaml`](./config/samples/database_v4_racdatabase.yaml), [`config/samples/database_v4_oraclerestart.yaml`](./config/samples/database_v4_oraclerestart.yaml) |
-| Observability | [`config/samples/observability/`](./config/samples/observability/) |
 
 ## Uninstall the Operator
 
