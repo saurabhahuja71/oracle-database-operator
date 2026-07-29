@@ -1,27 +1,19 @@
 #!/usr/bin/env bash
-
 set -euo pipefail
-
-primary_admin_secret_name="${PRIMARY_ADMIN_SECRET_NAME:-sidb-primary-admin}"
-primary_admin_secret_key="${PRIMARY_ADMIN_SECRET_KEY:-oracle_pwd}"
-primary_client_wallet_secret="${PRIMARY_CLIENT_WALLET_SECRET:-}"
 
 if ! command -v kubectl >/dev/null 2>&1; then
   echo "kubectl is required" >&2
   exit 1
 fi
+
 if ! command -v jq >/dev/null 2>&1; then
   echo "jq is required" >&2
-  exit 1
-fi
-if ! command -v ruby >/dev/null 2>&1; then
-  echo "ruby is required" >&2
   exit 1
 fi
 
 kind="${1:?kind required: sidb|sharding|rac}"
 name="${2:?resource name required}"
-namespace="${3:?namespace required}"
+namespace="${3:-default}"
 broker_name="${4:-${name}-dg}"
 
 case "$kind" in
@@ -40,75 +32,86 @@ case "$kind" in
     ;;
 esac
 
+cat <<'EOF'
+# Review this generated manifest before applying it.
+# Relationships are inferred from member roles: the PRIMARY is paired with each standby.
+# Members inherit topology.defaults.adminSecretRef. Add a member-level adminSecretRef only when a member uses a different password Secret.
+# Local SIDB endpoints use <service>.<namespace>.svc.cluster.local. Replace external or placeholder hosts with a broker-reachable hostname.
+# Missing TCPS endpoint ports default to 2484. Existing endpoint ports are preserved.
+# Replace placeholder Secret names or keys, and verify the TCPS client wallet before applying.
+EOF
+
 kubectl get "$resource" "$name" -n "$namespace" -o json \
-| jq \
-  --arg broker_name "$broker_name" \
-  --arg namespace "$namespace" \
-  --arg primary_admin_secret_name "$primary_admin_secret_name" \
-  --arg primary_admin_secret_key "$primary_admin_secret_key" \
-  --arg primary_client_wallet_secret "$primary_client_wallet_secret" '
-  if (.status.dataguard.renderedBrokerSpec // null) == null then
-    error("status.dataguard.renderedBrokerSpec is empty. Wait until the standby database is Healthy and Data Guard prerequisites are complete.")
-  else
-    .status.dataguard.renderedBrokerSpec as $r
-    | ($r.spec.topology.defaults.adminSecretRef // null) as $defaults_admin_secret_ref
-    | ($r.spec.topology.defaults.tcps.clientWalletSecret // "") as $defaults_client_wallet_secret
-    | {
-        apiVersion: "database.oracle.com/v4",
-        kind: "DataguardBroker",
-        metadata: {
-          name: ($r.name // $broker_name),
-          namespace: ($r.namespace // $namespace)
-        },
-        spec: (
-          $r.spec
-          | .topology.members |= map(
-              if .role == "PRIMARY" then
-                (
-                  if (
-                    ($primary_admin_secret_name != "")
+| jq -e --arg broker_name "$broker_name" --arg namespace "$namespace" '
+    .status.dataguard as $dg
+    | if $dg == null then
+        error("status.dataguard is missing")
+      elif ($dg.readyForBroker // false) != true then
+        error("status.dataguard.readyForBroker is not true")
+      elif ($dg.renderedBrokerSpec.spec // null) == null then
+        error("status.dataguard.renderedBrokerSpec.spec is missing")
+      else
+        {
+          apiVersion: "database.oracle.com/v4",
+          kind: "DataguardBroker",
+          metadata: {
+            name: ($dg.renderedBrokerSpec.name // $broker_name),
+            namespace: ($dg.renderedBrokerSpec.namespace // $namespace)
+          },
+          spec: (
+            $dg.renderedBrokerSpec.spec
+            | .topology as $topology
+            | .topology.members |= map(
+                . as $member
+                | if ($topology.defaults.adminSecretRef // null) != null
                     and (
-                      .adminSecretRef == null
-                      or (.adminSecretRef.secretName // "") == ""
-                      or (.adminSecretRef.secretName == "replace-with-external-admin-secret")
+                      ($member.adminSecretRef.secretName // "")
+                      ==
+                      ($topology.defaults.adminSecretRef.secretName // "")
                     )
-                  )
-                  then . + {
-                    adminSecretRef: {
-                      secretName: $primary_admin_secret_name,
-                      secretKey: $primary_admin_secret_key
-                    }
-                  }
-                  else .
-                  end
-                )
-                |
-                (
-                  if (
-                    ($primary_client_wallet_secret != "")
-                    and (.tcps != null)
                     and (
-                      (.tcps.clientWalletSecret // "") == ""
-                      or (.tcps.clientWalletSecret == "replace-with-primary-client-wallet-secret")
-                      or (.tcps.clientWalletSecret == "replace-with-shared-client-wallet-secret")
-                      or (.tcps.clientWalletSecret == $defaults_client_wallet_secret)
+                      ($member.adminSecretRef.secretKey // "")
+                      ==
+                      ($topology.defaults.adminSecretRef.secretKey // "")
                     )
-                  )
-                  then . + {
-                    tcps: (
-                      .tcps + {
-                        clientWalletSecret: $primary_client_wallet_secret
-                      }
-                    )
-                  }
-                  else .
+                  then
+                    del(.adminSecretRef)
+                  else
+                    .
                   end
-                )
-              else .
-              end
-            )
-        )
-      }
-  end
-' \
-| ruby -rjson -ryaml -e 'puts YAML.dump(JSON.parse(STDIN.read))'
+
+                | if .localRef != null then
+                    (.localRef.namespace // $namespace) as $member_namespace
+                    | (.localRef.name // "REPLACE_WITH_SIDB_SERVICE") as $service
+                    | .endpoints |= map(
+                        .host = (
+                          $service
+                          + "."
+                          + $member_namespace
+                          + ".svc.cluster.local"
+                        )
+                      )
+                  else
+                    .endpoints |= map(
+                        if ((.host // "") | length) == 0 then
+                          .host = "<REPLACE_WITH_REACHABLE_HOST>"
+                        else
+                          .
+                        end
+                      )
+                  end
+
+                | .endpoints |= map(
+                    if ((.port // 0) == 0)
+                       and ((.protocol // "" | ascii_upcase) == "TCPS")
+                    then
+                      .port = 2484
+                    else
+                      .
+                    end
+                  )
+              )
+          )
+        }
+      end
+  '
