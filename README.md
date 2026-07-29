@@ -71,20 +71,17 @@ Version 2.2 introduces expanded database lifecycle automation, stronger reconcil
 | **AutonomousDatabase** | • OCI lifecycle reconciliation, finalizers, wallet validation and rotation<br>• Backup-resource synchronization and cleanup |
 | **AutonomousContainerDatabase** | • OCI lifecycle-state validation and finalizer-based cleanup<br>• Kubernetes-to-OCI state synchronization |
 | **AutonomousDatabaseBackup / Restore** | • Target validation and owner references<br>• Point-in-time restore and OCI work-request integration |
-| **DbcsSystem** | • Pluggable database create/delete/status management<br>• Data Guard and KMS vault workflows with retry-safe status updates |
 | **Multitenant controllers (LREST / LRPDB)** | • Internal comunication protocol improvement and cofiguration simplification - No need to specify https password <br>  • Creating application users on pdb using k8s secrets  <br> • Monitor pdb init parameters with reconciliation loop <br>  • Code optimization  <br> • Reset bitmask status simplification <br> • Load tnsname.ora topology |
 | **OracleRestart** | • Phased reconciliation for validation, storage, workload, and finalization<br>• ASM disk lifecycle with static/dynamic PV/PVC handling |
-| **OracleRestDataService / ORDS Services** | • Expanded ORDS lifecycle, TLS, secret, configuration, and status management |
-| **RacDatabase** | • Expanded RAC and ASM storage lifecycle<br>• Disk/PVC provisioning, Data Guard integration, and validation |
-| **ShardingDatabase** | • Sharded topology lifecycle and scaling<br>• Catalog/shard management, Data Guard prerequisites, and status validation |
+| **ORDS Services (OrdsSrvs)** | • HTTP-only edge deployments, HTTP access-log forwarding/persistence, and Instance API bootstrap<br>• Configurable resource limits, metadata, and JVM options |
+| **RacDatabase** | • Expanded RAC and ASM storage lifecycle<br>• Disk/PVC provisioning, and validation |
+| **ShardingDatabase** | • Sharded topology lifecycle and scaling<br>• Catalog/shard management, and status validation |
 | **SingleInstanceDatabase** | • Service endpoints, TCPS, TrueCache, Data Guard prerequisites, clone/restore, and external PVCs<br>• Improved pod security, resource handling, recreation checks, and connection status |
 | **DataguardBroker** | • Topology runtime, authentication wallets, validation/provisioning, FSFO observer management, and operation tracking<br>• Idempotent manual switchover support |
 | **DatabaseObserver** | • Safer child-resource ownership and Server-Side Apply<br>• Improved deployment readiness and status handling |
-| **PrivateAI** | • Phased dependency/workload reconciliation and update-lock status<br>• TLS secret lifecycle, Traffic Manager integration, and rollout tracking |
-| **TrafficManager** *(new)* | • Managed NGINX reverse-proxy and Oracle Connection Manager (CMAN) endpoints<br>• PrivateAI path-based routing, generated rules, `cman.ora` file mode, next-hop patterns, TLS, and endpoint status |
+| **PrivateAI** | • Phased dependency/workload reconciliation and update-lock status<br>• TLS secret lifecycle, support for vLLM and GPU, and rollout tracking |
+| **TrafficManager** *(new)* *(preview mode)*| Oracle Connection Manager (CMAN) endpoints<br>• generated rules, `cman.ora` file mode, and endpoint status |
 | **Operator platform** | • New `network.oracle.com/v4` API and TrafficManager CRD<br>• Secure HTTPS metrics, hardened manager security context, expanded RBAC/webhooks, compatibility webhooks, network policy, samples, and test coverage |
-
-See the Traffic Manager documentation and sample manifests under [`docs/trafficmanager/`](./docs/trafficmanager/).
 
 ## Platform Compatibility
 
@@ -117,13 +114,7 @@ kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/
 
 ### Choose Deployment Scope
 
-The operator supports two deployment models. In both models, apply the base RBAC manifest first so the operator namespace, service account, and packaged manager roles exist before the controller starts:
-
-```sh
-kubectl apply -f oracle-database-operator-rbac.yaml
-```
-
-Then choose how much namespace access the operator should have:
+The operator supports two deployment models. In both models, apply the base RBAC manifest first so the operator namespace, service account, and packaged manager roles exist before the controller starts. Choose how much namespace access the operator should have:
 
 - `Cluster-scoped`: the operator watches all namespaces in the cluster. Use this when the operator should manage database resources across the cluster.
 - `Namespace-scoped`: the operator watches only selected namespaces. Use this when you want tighter access boundaries.
@@ -350,9 +341,9 @@ After the operator is installed, continue with the guide for your workload:
 | RAC | Manage Oracle Real Application Clusters | provision, scale, add or remove ASM disks | [docs/rac/README.md](./docs/rac/README.md) |
 | Oracle Restart | Manage Oracle Restart deployments | provision, ASM disk operations, load balancer support | [docs/oraclerestart/README.md](./docs/oraclerestart/README.md) |
 | Private AI | Manage Oracle Private AI Services Container | deploy, scale, configure networking, manage runtime updates | [docs/privateai/README.md](./docs/privateai/README.md) |
-| Traffic Manager | Route HTTP/HTTPS or database listener traffic | NGINX reverse proxy for PrivateAI, CMAN for Oracle listener connectivity | [docs/trafficmanager/README.md](./docs/trafficmanager/README.md) |
+| Traffic Manager | Route database listener traffic | CMAN for Oracle listener connectivity | [docs/trafficmanager/README.md](./docs/trafficmanager/README.md) |
 
-Traffic Manager works with PrivateAI for shared REST endpoints and with Single Instance Database or RAC for CMAN-based listener access. See the [Traffic Manager guide](./docs/trafficmanager/README.md) for NGINX TLS, private load balancers, CMAN generated and file-mode configuration, and sample manifests under [`docs/trafficmanager/samples/`](./docs/trafficmanager/samples/).
+Traffic Manager works with Single Instance Database or RAC for CMAN-based listener access. See the [Traffic Manager guide](./docs/trafficmanager/README.md) for CMAN generated and file-mode configuration, and sample manifests under [`docs/trafficmanager/samples/`](./docs/trafficmanager/samples/).
 
 ### Supporting Services
 
@@ -368,7 +359,7 @@ YAML templates are available under [`config/samples/`](./config/samples/). Copy 
 | Single Instance Database, ORDS, Data Guard | [`config/samples/sidb/`](./config/samples/sidb/) |
 | Autonomous Database and ACD | [`config/samples/adb/`](./config/samples/adb/), [`config/samples/acd/`](./config/samples/acd/) |
 | PrivateAI | [`config/samples/privateai_v4_privateai.yaml`](./config/samples/privateai_v4_privateai.yaml), [`docs/privateai/provisioning/`](./docs/privateai/provisioning/) |
-| Traffic Manager (NGINX and CMAN) | [`docs/trafficmanager/samples/`](./docs/trafficmanager/samples/) |
+| Traffic Manager (CMAN) | [`docs/trafficmanager/samples/`](./docs/trafficmanager/samples/) |
 | RAC and Oracle Restart | [`config/samples/database_v4_racdatabase.yaml`](./config/samples/database_v4_racdatabase.yaml), [`config/samples/database_v4_oraclerestart.yaml`](./config/samples/database_v4_oraclerestart.yaml) |
 | Observability | [`config/samples/observability/`](./config/samples/observability/) |
 
