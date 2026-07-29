@@ -1025,6 +1025,17 @@ func UpdateDeploySetForPrivateAI(
 		break
 	}
 
+	// The checks above identify fields that may need reconciliation, but the
+	// normalized representation can still be equivalent to the object already
+	// persisted in the API server (for example nil versus an empty annotation
+	// map).  Avoid issuing a no-op Deployment update: every unnecessary update
+	// can trigger another owned-resource reconcile and prevent the Deployment
+	// controller from catching up with its observed generation.
+	if reflect.DeepEqual(updated.Annotations, deploy.Annotations) &&
+		reflect.DeepEqual(updated.Spec, deploy.Spec) {
+		return ctrl.Result{}, nil
+	}
+
 	if err := kClient.Update(context.Background(), updated); err != nil {
 		LogMessages("ERROR", "Failed to update deployment with new spec", err, instance, logger)
 		instance.Status.Status = privateaiv4.StatusError
