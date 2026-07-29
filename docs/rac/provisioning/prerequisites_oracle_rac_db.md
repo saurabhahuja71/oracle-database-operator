@@ -196,13 +196,13 @@ After you create your Multus configuration file, apply it to the system. For exa
   ```
 Check the Multus network attachment definitions on the OCNE cluster:
   ```sh
-  $ kubectl get all -n kube-system -l app=multus
+  kubectl get all -n kube-system -l app=multus
   ```
 - Check the network attachment definitions as below:
   ```sh
-  $ kubectl get Network-Attachment-Definition -n rac
-  $ kubectl describe Network-Attachment-Definition macvlan-conf1 -n rac
-  $ kubectl describe Network-Attachment-Definition macvlan-conf2 -n rac
+  kubectl get Network-Attachment-Definition -n rac
+  kubectl describe Network-Attachment-Definition macvlan-conf1 -n rac
+  kubectl describe Network-Attachment-Definition macvlan-conf2 -n rac
   ```  
 
 ### Set Clock Source on the Worker Node 
@@ -437,7 +437,7 @@ Apart from the default Role Bindings for access management mentioned in above se
 ## Deploy Oracle Database Operator
 
 After you have completed the prerequisite steps, you can install the operator. To install the operator in the cluster quickly, you can apply the modified `oracle-database-operator.yaml` file from the previous step.
-```
+```bash
 kubectl apply -f oracle-database-operator.yaml
 ```
 
@@ -546,7 +546,7 @@ kubectl get nodes --show-labels | grep raccluster
 ```
 
 Expected output:
-```
+```text
 qck-ocne19-w1   ... raccluster=raccluster01
 qck-ocne19-w2   ... raccluster=raccluster01
 ```

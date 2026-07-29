@@ -28,6 +28,11 @@ kubectl get pods -n <namespace>
 *Example:*
 ```bash
 kubectl get pods -n ordsnamespace
+```
+
+Example output:
+
+```text
 NAME                               READY   STATUS                  RESTARTS      AGE
 ords-multi-pool-55db776994-7rrff   0/1     Init:CrashLoopBackOff   6 (61s ago)   12m
 ```
@@ -97,8 +102,13 @@ kubectl get pods -n <namespace>
 ```
 
 *Example:*
-```
+```bash
 kubectl get pods -n ordsnamespace
+```
+
+Example output:
+
+```text
 NAME                               READY   STATUS    RESTARTS   AGE
 ords-multi-pool-55db776994-m7782   1/1     Running   0          2m51s
 ```

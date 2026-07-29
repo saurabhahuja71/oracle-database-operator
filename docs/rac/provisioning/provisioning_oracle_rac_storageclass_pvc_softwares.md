@@ -41,6 +41,11 @@ Use the file [racdb_prov_sc_pvc.yaml](./racdb_prov_sc_pvc.yaml) for this use cas
 3. Follow the provisioning log from the RAC pod:
    ```sh
    kubectl exec -it pod/racnode1-0 -n rac -- bash -c "tail -f /tmp/orod/oracle_db_setup.log"
+   ```
+
+   Example output:
+
+   ```text
    ===================================
    ORACLE RAC DATABASE IS READY TO USE
    ===================================

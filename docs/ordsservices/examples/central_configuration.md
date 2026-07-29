@@ -44,7 +44,7 @@ Create these four files locally. We will package them into a ConfigMap.
 - **central-config-pool-b.json** pool-b configuration
 
 central-config-httpd.conf:
-```
+```apache
 ServerName localhost
 ServerRoot "/usr/local/apache2"
 Listen 80
@@ -81,7 +81,7 @@ DirectoryIndex disabled
 ```
 
 central-config-global.json:
-```
+```json
 {
   "settings": {
     "security.externalMappingPathPrefix": true,
@@ -112,7 +112,7 @@ central-config-global.json:
 ```
 
 central-config-pool-a.json:
-```
+```json
 {
   "database": {
     "pool": {
@@ -129,7 +129,7 @@ central-config-pool-a.json:
 ```
 
 central-config-pool-b.json:
-```
+```json
 {
   "database": {
     "pool": {
@@ -149,7 +149,7 @@ central-config-pool-b.json:
 
 ## Create the ConfigMap with the central config content
 
-```
+```bash
 kubectl -n NAMESPACE create configmap central-config \
   --from-file=central-config-httpd.conf \
   --from-file=central-config-global.json \
@@ -160,7 +160,7 @@ kubectl -n NAMESPACE create configmap central-config \
 ## Deploy the demo central config server (Apache HTTPD) and Service
 
 central-config-server.template:
-```
+```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -222,14 +222,14 @@ spec:
 ```
 
 Apply:
-```
+```bash
 kubectl apply -f central-config-server.template
 ```
 
 ## Validate the central config endpoints
 
 from the cluster network:
-```
+```bash
   curl http://central-config-svc/central/v1/config
   curl http://central-config-svc/central/v1/config/pool/pool-a
   curl http://central-config-svc/central/v1/config/pool/pool-b
@@ -240,7 +240,7 @@ You should receive the JSON documents defined above.
 ## Configure OrdsSrvs to use central.config.url
 
 OrdsSrvs manifest:
-```
+```yaml
 apiVersion: database.oracle.com/v4
 kind: OrdsSrvs
 metadata:
@@ -254,7 +254,7 @@ spec:
 ```
 
 Apply:
-```
+```bash
 kubectl apply -f ordssrvs-central-config.yaml
 ```
 
@@ -267,7 +267,7 @@ The controller will:
 
 Run the following in your database (adjust schema if needed). Example uses schema `ORDSSRVSTESTCASE`.
 
-```
+```sql
 CREATE TABLE TESTCASE ( STATUS VARCHAR2 (100));
 TRUNCATE TABLE TESTCASE;
 INSERT INTO TESTCASE VALUES ('ORDSSRVS_TESTCASE_CHECK');
@@ -299,7 +299,7 @@ END;
 
 Assuming ORDS is listening on 8443 and using the `/ords` context path:
 
-```
+```bash
 curl -ik https://ordssrvs-cc:8443/ords/pool-a/ordssrvs_testcase/testcase_table/ -H "Host: localhost"
 curl -ik https://ordssrvs-cc:8443/ords/pool-b/ordssrvs_testcase/testcase_table/ -H "Host: localhost"
 ```

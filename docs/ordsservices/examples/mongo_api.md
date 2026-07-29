@@ -55,8 +55,13 @@ In the database, create an ORDS-enabled user.  As this example uses the [Contain
 
     ```bash
     echo "
-    apiVersion: database.oracle.com/v4
     kind: OrdsSrvs
+    ```
+
+    Example output:
+
+    ```text
+    apiVersion: database.oracle.com/v4
     metadata:
       name: ords-sidb
       namespace: ordsnamespace

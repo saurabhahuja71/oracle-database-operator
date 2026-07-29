@@ -111,13 +111,9 @@ Examples:
 
 ```bash
 ./docs/sidb/script/setup-sidb-tcps-cert-manager.sh
-
 ./docs/sidb/script/setup-sidb-tcps-cert-manager.sh primary
-
 ./docs/sidb/script/setup-sidb-tcps-cert-manager.sh standby
-
 BOOTSTRAP_CA=false ./docs/sidb/script/setup-sidb-tcps-cert-manager.sh standby
-
 ./docs/sidb/script/setup-sidb-tcps-cert-manager.sh both
 ```
 
@@ -135,6 +131,7 @@ You can also execute the workflow one step at a time:
 
 ```bash
 ./docs/sidb/tcps-cert-manager/01-create-namespace.sh
+
 ./docs/sidb/tcps-cert-manager/02-bootstrap-root-ca.sh
 ./docs/sidb/tcps-cert-manager/03-create-root-issuer.sh
 ./docs/sidb/tcps-cert-manager/04-create-intermediate-ca.sh

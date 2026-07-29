@@ -2,6 +2,10 @@
 # Copyright (c) 2026, Oracle and/or its affiliates.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
+# Same-cluster True Cache (TCP). Pair with a primary SIDB that has already
+# published ConfigMap <primary-name>-truecache-blob (see generateBlob /
+# createConfigMap on the primary, or the truecache_primary_tcps_peered sample).
+#
 
 apiVersion: database.oracle.com/v4
 kind: SingleInstanceDatabase
@@ -19,7 +23,8 @@ spec:
   ## DB type
   createAs: truecache
 
-  ## Reference to the source primary database.
+  ## Reference to the source primary database in the same namespace.
+  ## Lab alternative: primarySource.connectString: "sidb-sample:1521/ORCLPRD"
   primarySource:
     databaseRef: "sidb-sample"
     ## Optional primary CDB DB_NAME when it must be supplied explicitly.
@@ -28,37 +33,44 @@ spec:
     ## the identifier derived from the source reference.
     # dbName: "ORCLPRD"
 
-  ## True Cache options
   ## Optional environment overrides for the True Cache container.
   ## Uncomment to override the default primary-host script path used by
-  ## autoTCServiceRegistration.
+  ## autoTCServiceRegistration. Field is top-level under spec (not under trueCache).
   # envVars:
   #   - name: PRIMARY_TC_SERVICE_SCRIPT_PATH
   #     value: /home/oracle/configure-primary-truecache-service.sh
+
+  ## True Cache options
   trueCache:
     ## Explicitly reference the generated blob from the primary database.
+    ## Default ConfigMap name is <primary-sidb-name>-truecache-blob.
     blobConfigMapRef: sidb-sample-truecache-blob
     blobConfigMapKey: tc_config_blob.tar.gz
     blobMountPath: /stage/tc_config_blob.tar.gz
     truedbUniqueName: "truecache_tc"
-    ## Accepts a semicolon-separated list of
-    ## `PRIMARY_PDB_NAME:PRIMARY_SERVICE_NAME:TRUECACHE_SERVICE_NAME`
+    ## Service mapping form:
+    ##   PRIMARY_PDB_NAME:PRIMARY_SERVICE_NAME:TRUECACHE_SERVICE_NAME
     ## The first value is the primary PDB name.
-    ## With autoTCServiceRegistration disabled, primary-side service
-    ## creation/association stays manual. To test automatic registration,
-    ## set autoTCServiceRegistration: true, copy the helper script to the
-    ## primary host, and on RAC primaries verify externaljob.ora runs
-    ## DBMS_SCHEDULER executable jobs as the Oracle software owner or set
-    ## primarySchedulerCredentialName to a primary-side scheduler credential.
-    ## True Cache database readiness does not by itself confirm that this
-    ## primary-side service association succeeded; verify it on the primary.
-    # autoTCServiceRegistration: true
+    ##
+    ## With autoTCServiceRegistration disabled (or omitted), primary-side service
+    ## creation/association stays manual on the primary host.
+    ## With autoTCServiceRegistration: true, the True Cache pod invokes
+    ## configure-primary-truecache-service.sh on the primary through DBMS_SCHEDULER.
+    ## Prerequisites (see docs/sidb/PREREQUISITES.md):
+    ## - helper present and executable on the primary (extension image prebakes
+    ##   /home/oracle/configure-primary-truecache-service.sh)
+    ## - externaljob.ora runs as oracle:oinstall (not nobody:nobody)
+    ## - DBMS_SCHEDULER smoke test passes
+    ## On RAC, install the helper at the same path on every node.
+    ## True Cache database readiness does not by itself confirm that primary-side
+    ## service association succeeded; verify TRUE_CACHE_SERVICE on the primary.
+    autoTCServiceRegistration: true
     # primarySchedulerCredentialName: TC_ORACLE_OS_CRED
     trueCacheServices:
       - "APPPDB1:tpdb_primary:tpdb_cache"
 
-  ## Optional static host-to-IP mappings added to the True Cache pod /etc/hosts
-  ## Useful when the primary database service name must resolve to a fixed IP
+  ## Optional static host-to-IP mappings added to the True Cache pod /etc/hosts.
+  ## Useful when the primary database hostname must resolve to a fixed IP.
   # hostAliases:
   #   - ip: "10.2.1.241"
   #     hostnames:
@@ -75,13 +87,31 @@ spec:
       tde:
         secretName: tde-wallet-secret
         secretKey: tde_wallet_pwd
+    ## For TCPS same-cluster, see singleinstancedatabase_truecache_same_cluster_tcps.yaml
 
   ## Database image details
   image:
-    ## Oracle True Cache requires a True Cache capable image
-    pullFrom: container-registry.oracle.com/database/enterprise_ru:latest
+    ## Oracle True Cache requires a True Cache capable image.
+    ## Replace <tenancy> / tag for your registry.
+    pullFrom: phx.ocir.io/<tenancy>/db-repo/oracle/database:truecache-23.26.0-ee
     prebuiltDB: false
     imagePullPolicy: Always
+
+  ## Optional init parameters (tune for lab or production)
+  initParams:
+    sgaTarget: 2048
+    pgaAggregateTarget: 1024
+    cpuCount: 2
+    processes: 600
+
+  ## Database pod resource details
+  resources:
+    requests:
+      memory: "12Gi"
+      cpu: "2"
+    limits:
+      memory: "24Gi"
+      cpu: "4"
 
   ## Optional node selector to restrict the database pod to nodes having specific labels.
   ## For a single exact node, kubernetes.io/hostname can be used.
@@ -94,9 +124,12 @@ spec:
   persistence:
     oradata:
       size: 60Gi
-      ## oci-bv applies to OCI block volumes. Use "standard" storageClass for dynamic provisioning in Minikube. Update as appropriate for other cloud service providers
+      ## oci-bv applies to OCI block volumes. Use "standard" storageClass for
+      ## dynamic provisioning in Minikube. Update as appropriate for other CSPs.
       storageClass: "oci-bv"
       accessMode: "ReadWriteOnce"
+    ## Recommended so the oracle user can write under oradata on the PVC.
+    setWritePermissions: true
 
   ## Count of Database Pods. Should be 1 for True Cache.
   replicas: 1

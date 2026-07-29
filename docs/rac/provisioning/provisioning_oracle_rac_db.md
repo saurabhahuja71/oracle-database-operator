@@ -41,6 +41,11 @@ Use the file: [racdb_prov.yaml](./racdb_prov.yaml) for this use case as below:
 
     # Check the logs of a particular pod. For example, to check the logs from the pod "racnode1-0":    
     kubectl exec -it pod/racnode1-0 -n rac -- bash -c "tail -f /tmp/orod/oracle_db_setup.log"
+    ```
+
+    Example output:
+
+    ```text
     ===================================
     ORACLE RAC DATABASE IS READY TO USE
     ===================================

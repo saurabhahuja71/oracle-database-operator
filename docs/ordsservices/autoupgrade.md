@@ -92,13 +92,17 @@ The init container logs the following message:
 
 ``` bash
 Missing /opt/oracle/apex/apex.zip, manually copy apex.zip in /opt/oracle/apex on the init container of the pod
-```
-
+```bash
 You can copy the apex.zip file into the container while the init script is waiting:
 
-``` bash
 kubectl cp /tmp/apex.zip <ordspod>:/tmp -c ordssrvs-init -n ordsnamespace
 kubectl exec -c ordssrvs-init -n ordsnamespace <ordspod> -- mv /tmp/apex.zip /opt/oracle/apex
+```
+
+Example output:
+
+```text
+``` bash
 ```
 
 

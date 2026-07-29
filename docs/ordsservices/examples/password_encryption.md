@@ -27,25 +27,27 @@ Create one Secret with separate encrypted values for the ORDS database user and 
 ```bash
 read -rsp 'ORDS database user credential: ' ORDS_DB_SECRET_VALUE
 printf '\n'
-read -rsp 'Database admin credential: ' ORDS_ADMIN_SECRET_VALUE
 printf '\n'
-
 printf '%s' "${ORDS_DB_SECRET_VALUE}" | \
   openssl pkeyutl -encrypt -pubin -inkey ordssrvs-public-key.pem \
   -pkeyopt rsa_padding_mode:oaep \
   -pkeyopt rsa_oaep_md:sha256 | base64 > e_db-auth
-
 printf '%s' "${ORDS_ADMIN_SECRET_VALUE}" | \
   openssl pkeyutl -encrypt -pubin -inkey ordssrvs-public-key.pem \
   -pkeyopt rsa_padding_mode:oaep \
   -pkeyopt rsa_oaep_md:sha256 | base64 > e_admin-auth
-
 kubectl create secret generic ordssrvs-auth-enc \
   --from-file=dbAuthEnc=e_db-auth \
   --from-file=adminAuthEnc=e_admin-auth \
   -n ordsnamespace
-
 rm e_db-auth e_admin-auth ordssrvs-private-key.pem ordssrvs-public-key.pem
+```
+
+Example output:
+
+```text
+read -rsp 'Database admin credential: ' ORDS_ADMIN_SECRET_VALUE
+
 unset ORDS_DB_SECRET_VALUE ORDS_ADMIN_SECRET_VALUE
 ```
 

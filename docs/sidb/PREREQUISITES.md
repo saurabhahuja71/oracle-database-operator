@@ -84,58 +84,92 @@ Unless noted otherwise, the examples below use the `default` namespace. Create t
 
   This is separate from TCPS. TDE and TCPS are different setup concerns.
 
-  **Primary DB auto-registration prerequisite for True Cache**
+  **Primary auto-registration prerequisite for True Cache**
 
-  If your True Cache manifest enables `spec.trueCache.autoTCServiceRegistration=true`, the DB operator launches the helper script through `DBMS_SCHEDULER` on the primary database, whether it is a single-instance database or a RAC database.
+  If your True Cache manifest enables `spec.trueCache.autoTCServiceRegistration=true`,
+  the operator launches a helper script on the primary through `DBMS_SCHEDULER`.
+  This applies to every True Cache path: **same-cluster SIDB**, **cross-cluster SIDB**,
+  and **external host SI or RAC** primaries (single-instance and RAC).
 
-  * Ensure that `configure-primary-truecache-service.sh` is present at the same path on every primary node where the scheduler job might run. In the supported extension-image workflow, the default path is `/home/oracle/configure-primary-truecache-service.sh`. Otherwise, copy the sample script to another path before enabling automatic registration. Specify the non-default path using variable `PRIMARY_TC_SERVICE_SCRIPT_PATH` in the YAML file.
-  * Keep the script owned by the Oracle software owner and make it executable.
-  * Verify in the primary DB home that `$ORACLE_HOME/rdbms/admin/externaljob.ora` is configured to run external jobs as the Oracle software owner. For example:
+  - **Ensure `configure-primary-truecache-service.sh` is available on every primary
+    node** where the scheduler job might run (for multi-node RAC, the same path on
+    each node).
 
-  ```sh
-  run_user = oracle
-  run_group = oinstall
-  ```
+    The default path used by the operator is
+    `/home/oracle/configure-primary-truecache-service.sh`.
 
-  The automatic path launches the helper through `DBMS_SCHEDULER`. A default `run_user = nobody` / `run_group = nobody` configuration can fail even when the helper script works in an interactive `oracle` shell.
+    When the primary uses the True Cache extension image (built from
+    `docker-images/OracleDatabase/SingleInstance/extensions/truecache`), that
+    script is **already prebaked** at the default path — do **not** copy it again;
+    only confirm it is present. Copy the sample script only when the primary is
+    **outside** that extension-image workflow.
 
-  Do not stop at `externaljob.ora`. Before enabling `spec.trueCache.autoTCServiceRegistration=true`, run a real scheduler smoke test and verify the job actually runs as `oracle`.
+    To use another path, set `PRIMARY_TC_SERVICE_SCRIPT_PATH` on the True Cache
+    SIDB (for example via `spec.envVars`):
 
-  Connect to primary database through the listener. For example:  
-  
-  ```sql
-  sqlplus sys@<PRIMARY_TNS_ALIAS> as sysdba
-  ```
-  
-  where <PRIMARY_TNS_ALIAS> is a TNS alias that points to the primary listener (if it is a RAC, to the scan listener). Run the smoke test using below:
+    ```yaml
+    envVars:
+      - name: PRIMARY_TC_SERVICE_SCRIPT_PATH
+        value: /custom/path/configure-primary-truecache-service.sh
+    ```
 
-  ```sql
-  BEGIN
-    DBMS_SCHEDULER.CREATE_JOB(
-      job_name            => 'EXTJOB_ID_TEST',
-      job_type            => 'EXECUTABLE',
-      job_action          => '/bin/bash',
-      number_of_arguments => 2,
-      enabled             => FALSE,
-      auto_drop           => FALSE
-    );
-    DBMS_SCHEDULER.SET_JOB_ARGUMENT_VALUE('EXTJOB_ID_TEST', 1, '-lc');
-    DBMS_SCHEDULER.SET_JOB_ARGUMENT_VALUE(
-      'EXTJOB_ID_TEST', 2,
-      'id > /tmp/extjob_id_test.out; echo ORACLE_HOME=$ORACLE_HOME >> /tmp/extjob_id_test.out; echo ORACLE_SID=$ORACLE_SID >> /tmp/extjob_id_test.out'
-    );
-    DBMS_SCHEDULER.RUN_JOB('EXTJOB_ID_TEST', use_current_session => FALSE);
-  END;
-  /
-  ```
+  - **Keep the script owned by the Oracle software owner and executable**
+    (for example mode `750` or `755`).
 
-  Then verify on the RAC node where it ran:
+  - **Verify `$ORACLE_HOME/rdbms/admin/externaljob.ora`** in the primary DB home
+    runs external jobs as that Oracle software owner. For example:
 
-  ```bash
-  cat /tmp/extjob_id_test.out
-  ```
+    ```text
+    run_user = oracle
+    run_group = oinstall
+    ```
 
-  Expected output includes the Oracle DB software owner, for example `uid=... (oracle)`. If the file shows any other OS user, fix the scheduler runtime before relying on automatic registration.
+    A default `run_user = nobody` / `run_group = nobody` configuration can fail
+    even when the helper script works in an interactive `oracle` shell.
+
+  - **Smoke-test the scheduler** so a real executable job runs as `oracle` before
+    you rely on automatic registration.
+
+    Connect to the primary through the listener. For example:
+
+    ```
+    sqlplus sys@<PRIMARY_TNS_ALIAS> as sysdba
+    ```
+
+    where `<PRIMARY_TNS_ALIAS>` is a TNS alias that points to the primary listener
+    (for RAC, the SCAN listener).
+
+    Then run:
+
+    ```sql
+    BEGIN
+      DBMS_SCHEDULER.CREATE_JOB(
+        job_name            => 'EXTJOB_ID_TEST',
+        job_type            => 'EXECUTABLE',
+        job_action          => '/bin/bash',
+        number_of_arguments => 2,
+        enabled             => FALSE,
+        auto_drop           => FALSE
+      );
+      DBMS_SCHEDULER.SET_JOB_ARGUMENT_VALUE('EXTJOB_ID_TEST', 1, '-lc');
+      DBMS_SCHEDULER.SET_JOB_ARGUMENT_VALUE(
+        'EXTJOB_ID_TEST', 2,
+        'id > /tmp/extjob_id_test.out; echo ORACLE_HOME=$ORACLE_HOME >> /tmp/extjob_id_test.out; echo ORACLE_SID=$ORACLE_SID >> /tmp/extjob_id_test.out'
+      );
+      DBMS_SCHEDULER.RUN_JOB('EXTJOB_ID_TEST', use_current_session => FALSE);
+    END;
+    /
+    ```
+
+    Then verify on the node where the job ran:
+
+    ```bash
+    cat /tmp/extjob_id_test.out
+    ```
+
+    Expected output includes the Oracle DB software owner, for example
+    `uid=... (oracle)`. If the file shows any other OS user, fix the scheduler
+    runtime before relying on automatic registration.
 
   **TLS secret for TCPS**
 

@@ -181,6 +181,11 @@ Check the controller:
 
 ```bash
 kubectl get pods -n oracle-database-operator-system
+```
+
+Example output:
+
+```text
 NAME                                                           READY   STATUS    RESTARTS   AGE
 oracle-database-operator-controller-manager-796c9b87df-6xn7c   1/1     Running   0          22m
 oracle-database-operator-controller-manager-796c9b87df-sckf2   1/1     Running   0          22m
@@ -279,6 +284,11 @@ openssl genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keyge
 
 ```bash
 /usr/local/go/bin/kubectl create secret generic pubkey --from-file=publicKey=public.pem -n cdbnamespace
+```
+
+Example output:
+
+```text
 /usr/local/go/bin/kubectl create secret generic prvkey --from-file=privateKey=private.key  -n cdbnamespace
 /usr/local/go/bin/kubectl create secret generic prvkey --from-file=privateKey=private.key -n pdbnamespace
 ```
@@ -367,13 +377,18 @@ Examples:
 
 ```bash
 orapki --version
-Oracle PKI Tool Release 23.0.0.0.0 - Production
-
 mkdir orapkidir
 orapki  wallet create -wallet ./orapkidir   -pwd [WLPASSWD] -auto_login
 orapki secretstore create_credential -wallet ./orapkidir  -connect_string orapkitag -username [ADMINUSER] 
 kubectl create secret generic orawallet --from-file=./orapkidir -n [LRESTNAMESPACE]
 kubectl describe secrets orawallet -n cdbnamespace 
+```
+
+Example output:
+
+```text
+Oracle PKI Tool Release 23.0.0.0.0 - Production
+
 Name:         orawallet
 Namespace:    cdbnamespace
 Labels:       <none>
@@ -391,13 +406,18 @@ cwallet.sso.lck:  0 bytes
 
 ```bash
 orapki version
-Oracle PKI Tool Release 23.0.0.0.0 - Production
-
 mkdir orapkidir
 orapki  wallet create -wallet ./orapkidir   -pwd [WLPASSWD] -auto_login
 orapki secretstore create_credential -wallet ./orapkidir -pwd [WLPASSWD]  -connect_string orapkitag -username [ADMINUSER] -password [ADMIMUSERPASSWD]
 kubectl create secret generic orawallet --from-file=./orapkidir -n [LRESTNAMESPACE]
 kubectl describe secrets orawallet -n cdbnamespace 
+```
+
+Example output:
+
+```text
+Oracle PKI Tool Release 23.0.0.0.0 - Production
+
 Name:         orawallet
 Namespace:    cdbnamespace
 Labels:       <none>
@@ -411,7 +431,6 @@ cwallet.sso:      651 bytes
 cwallet.sso.lck:  0 bytes
 ewallet.p12:      606 bytes
 ewallet.p12.lck:  0 bytes
-
 ```
 
 * **LREST YAML file attributes**
@@ -435,6 +454,11 @@ Ensure that you update the **lrestImage** with the latest version available on t
 
 ```bash
 --> for amd64
+```
+
+Example output:
+
+```text
 lrestImage: container-registry.oracle.com/database/operator:lrest-241210-amd64
 
 --> for arm64
@@ -449,6 +473,11 @@ Monitor the file processing:
 
 ```bash
 kubectl get pods -n cdbnamespace --watch
+```
+
+Example output:
+
+```text
 NAME                     READY   STATUS    RESTARTS   AGE
 cdb-dev-lrest-rs-9gvx2   0/1     Pending   0          0s
 cdb-dev-lrest-rs-9gvx2   0/1     Pending   0          0s
@@ -582,6 +611,11 @@ Check the status of the resource and whether the PDB exists on the container dat
 
 ```bash
 kubectl get lrpdb -n pdbnamespace
+```
+
+Example output:
+
+```text
 NAME CONNECT_STRING CDB NAME   LRPDB NAME   LRPDB STATE   LRPDB SIZE   STATUS   MESSAGE   LAST SQLCODE
 lrpdb1   (DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELAY=10)(TRANSPORT_CONNECT_TIMEOUT=70)(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan12.testrac.com)(PORT=1521)(IP=V4_ONLY))(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan34.testrac.com)(PORT=1521)(IP=V4_ONLY))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=pdbdev))) DB12  pdbdev  MOUNTED  2G  Ready  Success 
 ```
@@ -626,7 +660,7 @@ SQL>
 
 The **pdbconfigmap** parameter specifies a Kubernetes `ConfigMap` with init PDB parameters. The ConfigMap payload has the following format:
 
-```
+```text
 <parameter name1>;<parameter value1>;<scope:system|spfile|both>
 <parameter name2>;<parameter value2>;<scope:system|spfile|both>
 <parameter name3>;<parameter value3>;<scope:system|spfile|both>
@@ -647,6 +681,11 @@ EOF
 kubectl create  configmap config-map-pdb -n pdbnamespace --from-file=./parameters.txt
 
 kubectl describe configmap config-map-pdb -n pdbnamespace
+```
+
+Example output:
+
+```text
 Name:         config-map-pdb
 Namespace:    pdbnamespace
 Labels:       <none>
@@ -950,13 +989,17 @@ The message format for **APPLYSQL** is `CODE:SQLCODE '[<tagname>]':'<PLSQL RETUR
 
 ```bash
 +----------------------------------------------------------------------+
+```
+
+Example output:
+
+```text
 | plblock1.sql: |                                                      |
 |       rename plsqltestuser.k8splsqltab to plsqltestuser.tablerename  |--------------+
 +----------------------------------------------------------------------+              |
                                                                                       |
                                                                                       +
 3m55s       Warning   APPLYSQL-100536   lrpdb/pdb1   CODE:SQLCODE '[plblock1.sql]':'1765'
-
 ```
 
 * The number of code lines is limited by the `ConfigMap` capability. To work around this limitation, you can use more configuration maps.
@@ -1066,7 +1109,7 @@ kubectl replace -f oracle-database-database.yaml
 
 * (**A**) deploy **LREST** controller
 
-```
+```bash
 kubectl apply -f create_lrest_pod.yaml
 ```
 

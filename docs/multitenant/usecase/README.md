@@ -188,11 +188,14 @@ kubectl logs  `kubectl get pods -o custom-columns=:metadata.name -n cdbnamespace
 ## example ##
 
 kubectl get pods -n cdbnamespace
+kubectl exec  cdb-dev-lrest-rs-fnw99 -n cdbnamespace -it -- /bin/bash
+```
+
+Example output:
+
+```text
 NAME                     READY   STATUS    RESTARTS      AGE
 cdb-dev-lrest-rs-fnw99   1/1     Running   1 (17h ago)   18h
-
-kubectl exec  cdb-dev-lrest-rs-fnw99 -n cdbnamespace -it -- /bin/bash
-[oracle@cdb-dev-lrest-rs-fnw99 ~]$
 ```
 
 ### 7.3. <a name='Monitorcontrolplane'></a>Monitor control plane
@@ -203,6 +206,11 @@ kubectl logs -f -l control-plane=controller-manager -n oracle-database-operator-
 
 ```bash
 ## output example: ##
+```
+
+Example output:
+
+```text
 2024-10-28T23:54:25Z    INFO    lrpdb-webhook   ValidateUpdate-Validating LRPDB spec for : lrpdb2
 2024-10-28T23:54:25Z    INFO    lrpdb-webhook   validateCommon  {"name": "lrpdb2"}
 2024-10-28T23:54:25Z    INFO    lrpdb-webhook   Valdiating LRPDB Resource Action : MODIFY
@@ -216,7 +224,6 @@ kubectl logs -f -l control-plane=controller-manager -n oracle-database-operator-
 2024-10-29T10:07:20Z    INFO    controller-runtime.certwatcher  Starting certificate watcher
 I1029 10:07:20.189724       1 leaderelection.go:250] attempting to acquire leader lease oracle-database-operator-system/a9d608ea.oracle.com...
 2024-10-29T16:49:15Z    INFO    lrpdb-webhook   Setting default values in LRPDB spec for : lrpdb1
-
 ```
 
 ### 7.4. <a name='Errordecryptingcredential'></a>Error decrypting credential
@@ -240,6 +247,11 @@ Use the **describe** option to obtain `crd` information
 
 ```bash
 kubectl describe lrpdb lrpdb1 -n pdbnamespace
+```
+
+Example output:
+
+```text
 [...]
     Secret:
       Key:          e_wbuser.txt
@@ -261,7 +273,6 @@ Events:
   Normal   Created    108s                  LRPDB  PDB 'pdbdev' assertive pdb deletion turned on
   Warning  LRESTINFO  95s                   LRPDB  pdb=pdbdev:test_invalid_parameter:16:spfile:2065
   Warning  Done       15s (x12 over 2m25s)  LRPDB  cdb-dev
-
 ```
 
 </span>
