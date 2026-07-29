@@ -1,18 +1,16 @@
-# Scale in an existing Oracle GDD deployment with System-Managed Sharding and Data Guard replication
+# Scale out an existing Oracle GDD deployment with Composite Sharding and Data Guard replication
 
 **IMPORTANT:** Make sure you have completed the steps for [Prerequisites for running Oracle Sharding Database Controller](../../README.md#prerequisites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
 
-This use case demonstrates how to delete a shard from an existing Oracle GDD deployment with System-Managed Sharding that was provisioned using the Oracle Sharding Controller.
-
-**NOTE:** A shard is deleted only after all chunks have been moved out of it.
+This use case demonstrates how to add a new shard to an existing Oracle GDD deployment with Composite Sharding and Data Guard replication that was provisioned using the Oracle Sharding Controller.
 
 This example assumes the existing Oracle GDD deployment includes:
 
 * Primary GSM pod: `gsm1`
 * Standby GSM pod: `gsm2`
-* Three shard database pods (`shardNum: 3`)
+* Two shard database pods (`shardNum: 2`)
 * One catalog database pod: `catalog`
-* `shardingType: SYSTEM` (System-Managed Sharding)
+* `shardingType: COMPOSITE` (Composite Sharding)
 * Replication type: Data Guard (replicationType: DG)
 * Namespace: `shns`
 
@@ -23,33 +21,28 @@ This example uses pre-built Oracle Database and Global Data Services container i
 * For prerequisites for Oracle Database and Global Data Services container images, see [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-container-images).
 * If you want to use the [Oracle AI Database 26ai Free](https://www.oracle.com/database/free/get-started/) image for the database and GSM, add the additional parameter `dbEdition: "free"` to the YAML manifest.
 
-Scale in the deployment by changing `shardNum` from `3` to `2` in the manifest and applying the updated configuration.
+Scale out the deployment by changing `shardNum` from `2` to `3` in the manifest and applying the updated configuration.
 
-Use the manifest: [ssharding_shard_prov_delshard.yaml](./ssharding_shard_prov_delshard.yaml) for this deployment:
+Use the following updated manifest:
 
-1. Deploy the `ssharding_shard_prov_delshard.yaml` manifest:
+[composite_shard_prov_extshard.yaml](./composite_shard_prov_extshard.yaml)
+
+1. Deploy the updated `composite_shard_prov_extshard.yaml` manifest:
 
     ```sh
-    kubectl apply -f ssharding_shard_prov_delshard.yaml
+    kubectl apply -f composite_shard_prov_extshard.yaml
     ```
+
+    **Note:** Applying the updated manifest triggers the Oracle Sharding Controller to reconcile the deployment and provision the additional shard automatically.
 
 2. Check the status of the deployment:
 
     ```sh
     # Check the status of the Kubernetes pods:
     kubectl get all -n shns
-    ```
 
-    **NOTE:** After you apply `ssharding_shard_prov_delshard.yaml`, the change may not be be visible immediately. The shard is removed only after all its chunks have been relocated.
-
-    To monitor the chunk movement, use the following command:
-
-    ```sh
-    # Switch to the primary GSM Container:
-    kubectl exec -i -t gsm1-0 -n shns /bin/bash
-
-    # Check the chunk distribution. Repeat this command to monitor chunk relocation:
-    gdsctl config chunks
+    # View the logs for a specific pod (for example, "cpsp1-0"):
+    kubectl logs -f pod/cpsp1-0 -n shns
     ```
 
 3. Verify using the following commands:
@@ -63,4 +56,9 @@ Use the manifest: [ssharding_shard_prov_delshard.yaml](./ssharding_shard_prov_de
 
     # Check the status of the chunks:
     gdsctl config chunks
+
+    # Check the details of the Oracle GDD database:
+    gdsctl config sdb
     ```
+
+    When the scale-out operation completes successfully, the newly added shard appears in the output of `gdsctl config shard`, and the corresponding Kubernetes pod (`cpsp3-0`) is in the `Running` state.

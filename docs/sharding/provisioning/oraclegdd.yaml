@@ -24,7 +24,7 @@ spec:
   ## Defaults to Enterprise Edition if not specified.
   ## Set to "free" to deploy Oracle AI Database 26ai Free.
   #dbEdition: "free"
-  
+
   ## Database container image used for Catalog and Shard database pods.
   dbImage: container-registry.oracle.com/database/enterprise_ru:latest-19
 
@@ -130,7 +130,7 @@ spec:
         value: "4096"
       ## Number of catalog chunks.
       ## Default: 120.
-      ## For Oracle AI Database 26ai Free, the default is 12 if not specified.      
+      ## For Oracle AI Database 26ai Free, the default is 12 if not specified.
 #      - name:  "CATALOG_CHUNKS"
 #        value: "120"
 

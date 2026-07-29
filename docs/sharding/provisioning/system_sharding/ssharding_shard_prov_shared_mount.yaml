@@ -100,9 +100,9 @@ spec:
     ## Useful for mounting shared storage into all pods.
     ## For example, create an OCI File Storage Service (FSS)-based PVC
     ## and mount it into all pods.    
-#    additionalPVCs:
-#      - mountPath: /data
-#        pvcName: oke-fsspvc    
+    additionalPVCs:
+      - mountPath: /data
+        pvcName: pvc-gdd-deployment    
 
     ## Image pull policy for the database container image.
     imagePullPolicy: Always
@@ -110,24 +110,24 @@ spec:
     ## Catalog pod resource requests and limits.
     ## CPU may be specified as whole or fractional cores.
     ## Memory supports Kubernetes quantity suffixes (Gi, Mi, Ti, etc.).
-    resources:
-     requests:
-       cpu: "2"
-       memory: "16Gi"
-     limits:
-       cpu: "2"
-       memory: "16Gi"
+#    resources:
+#     requests:
+#       cpu: "2"
+#      memory: "16Gi"
+#     limits:
+#       cpu: "2"
+#       memory: "16Gi"
 
     ## Additional environment variables for the Catalog database.
     ## Note: Oracle AI Database 26ai Free does not support
     ## INIT_SGA_SIZE or INIT_PGA_SIZE.
-    envVars:
+#    envVars:
       ## Initial SGA size (MB).
-      - name: "INIT_SGA_SIZE"
-        value: "8192"
+#      - name: "INIT_SGA_SIZE"
+#        value: "8192"
       ## Initial PGA size (MB).
-      - name: "INIT_PGA_SIZE"
-        value: "4096"
+#      - name: "INIT_PGA_SIZE"
+#        value: "4096"
       ## Number of catalog chunks.
       ## Default: 120.
       ## For Oracle AI Database 26ai Free, the default is 12 if not specified.      
@@ -160,13 +160,13 @@ spec:
     imagePullPolicy: IfNotPresent
 
     ## GSM pod resource requests and limits.
-    resources:
-     requests:
-       cpu: "2"
-       memory: "4Gi"
-     limits:
-       cpu: "2"
-       memory: "4Gi"
+#    resources:
+#     requests:
+#       cpu: "2"
+#       memory: "4Gi"
+#     limits:
+#       cpu: "2"
+#       memory: "4Gi"
 
     ## GSM instances.  
     gsm:
@@ -177,9 +177,9 @@ spec:
 
        ## Optional additional Persistent Volume Claims to mount into this pod.
        ## Use this for shared storage, for example an OCI File Storage Service (FSS)-based PVC.
-#       additionalPVCs:
-#         - mountPath: /data
-#           pvcName: oke-fsspvc
+       additionalPVCs:
+         - mountPath: /data
+           pvcName: pvc-gdd-deployment
 
        ## Optional node selector to schedule this pod only on worker nodes
        ## matching the specified node label
@@ -192,9 +192,9 @@ spec:
 
        ## Optional additional Persistent Volume Claims to mount into this pod.
        ## Use this for shared storage, for example an OCI File Storage Service (FSS)-based PVC.
-#       additionalPVCs:
-#         - mountPath: /data
-#           pvcName: oke-fsspvc
+       additionalPVCs:
+         - mountPath: /data
+           pvcName: pvc-gdd-deployment
 
        ## Optional node selector to schedule this pod only on worker nodes
        ## matching the specified node label
@@ -214,31 +214,31 @@ spec:
 
     ## Optional additional Persistent Volume Claims to mount into all the shard database pods.
     ## Use this for shared storage, for example an OCI File Storage Service (FSS)-based PVC.
-#    additionalPVCs:
-#      - mountPath: /data
-#        pvcName: oke-fsspvc
+    additionalPVCs:
+      - mountPath: /data
+        pvcName: pvc-gdd-deployment
 
     ## Shard pod resource requests and limits.
     ## CPU may be specified as whole or fractional cores
     ## Memory supports Kubernetes quantity suffixes (Gi, Mi, Ti, etc.)
-    resources:
-     requests:
-       cpu: "2"
-       memory: "16Gi"
-     limits:
-       cpu: "2"
-       memory: "16Gi"
+#    resources:
+#     requests:
+#       cpu: "2"
+#       memory: "16Gi"
+#     limits:
+#       cpu: "2"
+#       memory: "16Gi"
 
     ## Additional environment variables for the Shard database.
     ## Note: Oracle AI Database 26ai Free does not support
     ## INIT_SGA_SIZE or INIT_PGA_SIZE.
-    envVars:
+#    envVars:
       ## Initial SGA size (MB).
-      - name: "INIT_SGA_SIZE"
-        value: "8192"
+#      - name: "INIT_SGA_SIZE"
+#        value: "8192"
       ## Initial PGA size (MB).
-      - name: "INIT_PGA_SIZE"
-        value: "4096"        
+#      - name: "INIT_PGA_SIZE"
+#        value: "4096"        
 
     ## Shard space configuration
     ## Use this parameter along with shardGroupDetails in case of Composite Sharding

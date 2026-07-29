@@ -44,7 +44,7 @@ spec:
   ## Sharding type.
   ## Default: SYSTEM (System-Managed Sharding).
   ## Valid values: SYSTEM (System-Managed Sharding), USER (User-Defined Sharding) and COMPOSITE (Composite Sharding).
-  shardingType: SYSTEM
+  shardingType: COMPOSITE
 
   ## Replication Type.
   ## Default: DG (Data Guard).
@@ -205,11 +205,11 @@ spec:
   ## The shardInfo block applies only to System-Managed and Composite Sharding
   ## The shard block applies only to User-Defined Sharding.
   shardInfo:
-  - shardPreFixName: pshard
+  - shardPreFixName: cpsp
 
     ## Number of shard databases to deploy.
     ## For Oracle AI Database 26ai Free, the maximum supported value is 3.
-    shardNum: 2
+    shardNum: 3
     storageSizeInGb: 50
 
     ## Optional additional Persistent Volume Claims to mount into all the shard database pods.
@@ -242,17 +242,17 @@ spec:
 
     ## Shard space configuration
     ## Use this parameter along with shardGroupDetails in case of Composite Sharding
-#    shardSpaceDetails:
-#      name: css1
+    shardSpaceDetails:
+      name: css1
 
     ## Shard group configuration.
     shardGroupDetails:
-      name: pshg1
+      name: cpg1
       region: primary
       ## "deployAs" is applicable only for Data Guard replication and is not supported for Native (Raft) replication.
       deployAs: primary
       ## Composite sharding with NATIVE replication requires ru_mode
-#      ru_mode: READWRITE
+#      ru_mode: READWRITE      
 
     ## Kubernetes worker nodes on which shard pods may be scheduled.
     nodes:
