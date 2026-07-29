@@ -26,13 +26,13 @@ spec:
   #dbEdition: "free"
   
   ## Database container image used for Catalog and Shard database pods.
-  dbImage: container-registry.oracle.com/database/enterprise_ru:latest-19
+  dbImage: container-registry.oracle.com/database/enterprise_ru:latest-26
 
   ## Database container image pull secret
   dbImagePullSecret: ocr-reg-cred
 
   ## GSM container image used for Global Service Manager (GSM) pods.
-  gsmImage: container-registry.oracle.com/database/gsm_ru:latest-19
+  gsmImage: container-registry.oracle.com/database/gsm_ru:latest-26
 
   ## GSM container image pull secret
   gsmImagePullSecret: ocr-reg-cred
@@ -44,12 +44,12 @@ spec:
   ## Sharding type.
   ## Default: SYSTEM (System-Managed Sharding).
   ## Valid values: SYSTEM (System-Managed Sharding), USER (User-Defined Sharding) and COMPOSITE (Composite Sharding).
-  shardingType: SYSTEM
+  shardingType: COMPOSITE
 
   ## Replication Type.
   ## Default: DG (Data Guard).
   ## Valid values: DG (Data Guard) and NATIVE (Raft Replication)
-  replicationType: DG
+  replicationType: NATIVE
 
   ##### NOTE ######
   ## Valid sharding type and replication type combinations:
@@ -205,11 +205,11 @@ spec:
   ## The shardInfo block applies only to System-Managed and Composite Sharding
   ## The shard block applies only to User-Defined Sharding.
   shardInfo:
-  - shardPreFixName: pshard
+  - shardPreFixName: cpsp
 
     ## Number of shard databases to deploy.
     ## For Oracle AI Database 26ai Free, the maximum supported value is 3.
-    shardNum: 2
+    shardNum: 3
     storageSizeInGb: 50
 
     ## Optional additional Persistent Volume Claims to mount into all the shard database pods.
@@ -242,17 +242,17 @@ spec:
 
     ## Shard space configuration
     ## Use this parameter along with shardGroupDetails in case of Composite Sharding
-#    shardSpaceDetails:
-#      name: css1
+    shardSpaceDetails:
+      name: css1
 
     ## Shard group configuration.
     shardGroupDetails:
-      name: pshg1
+      name: cpg1
       region: primary
       ## "deployAs" is applicable only for Data Guard replication and is not supported for Native (Raft) replication.
-      deployAs: primary
+#      deployAs: primary
       ## Composite sharding with NATIVE replication requires ru_mode
-#      ru_mode: READWRITE
+      ru_mode: READWRITE
 
     ## Kubernetes worker nodes on which shard pods may be scheduled.
     nodes:
