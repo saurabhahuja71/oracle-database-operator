@@ -422,7 +422,12 @@ To obtain a quick status, use the following command as an example:
 > We will use this name as an example.
 
 ```sh
-$ kubectl get databaseobserver obs-sample
+kubectl get databaseobserver obs-sample
+```
+
+Example output:
+
+```text
 NAME         METRICSCONFIG   STATUS   VERSION
 obs-sample   DEFAULT          READY    2.0.2
 ```
@@ -613,7 +618,7 @@ create a combined wallet:
 
 2. Set the wallet directory for the aliases inside security, with the following snippet pointing to each database wallet location: `(MY_WALLET_DIRECTORY=/example_dbwallet/db01)`, for example:
 
-```
+```text
 ...)(security=(MY_WALLET_DIRECTORY=)(ssl_server_dn_match=...)))
 ```
 
@@ -627,6 +632,11 @@ create a combined wallet:
 The resulting wallet directory structure should look similar to the following, where wallet files for each database are in separate directories:
 ```bash
 #
+```
+
+Example output:
+
+```text
 example_dbwallet
 ├── combined
 │   ├── sqlnet.ora
@@ -828,7 +838,7 @@ request = "SELECT 1 as value_1, 2 as value_2 FROM DUAL"
 metricsdesc = { value_1 = "Simple example returning always 1.", value_2 = "Same but returning always 2." }
 ```
 This file produces the following entries:
-```
+```text
 # HELP oracledb_test_value_1 Simple example returning always 1.
 # TYPE oracledb_test_value_1 gauge
 oracledb_test_value_1 1

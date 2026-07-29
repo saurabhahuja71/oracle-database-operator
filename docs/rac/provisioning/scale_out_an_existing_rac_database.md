@@ -23,7 +23,12 @@
 
 **Note:** In the current case, a new worker node was labelled as below to be used for the new Kubernetes Pod `racnode3-0`(the new RAC Node):
   ```sh
-  $ kubectl label node qck-ocne19-w3 raccluster=raccluster01
+  kubectl label node qck-ocne19-w3 raccluster=raccluster01
+  ```
+
+  Example output:
+
+  ```text
   node/qck-ocne19-w3 labeled
   ```
 

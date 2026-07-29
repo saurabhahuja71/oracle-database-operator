@@ -137,12 +137,12 @@ The following commands are useful for a quick test:
 
 ```bash
 curl -k -H "Authorization: Bearer <TOKEN>" \
-  https://127.0.0.1:8443/metrics | grep '^controller_runtime_reconcile_total'
+  https://127.0.0.1:8443/metrics
 ```
 
 ```bash
 curl -k -H "Authorization: Bearer <TOKEN>" \
-  https://127.0.0.1:8443/metrics | grep '^workqueue_depth'
+  https://127.0.0.1:8443/metrics
 ```
 
 ## 6. Prometheus Scrape Example

@@ -12,6 +12,11 @@ Validate using `uname`. For example:
 
   ```sh
   uname -r
+  ```
+
+  Example output:
+
+  ```text
   4.14.35-1902.0.18.el7uek.x86_64
   ```
 

@@ -67,8 +67,14 @@ Refer to Single Instance Database (SIDB) [README](https://github.com/oracle/orac
 
     ```bash
     echo "
-    apiVersion: database.oracle.com/v4
     kind: OrdsSrvs
+    kubectl apply -f ords-sidb.yaml
+    ```
+
+    Example output:
+
+    ```text
+    apiVersion: database.oracle.com/v4
     metadata:
       name: ords-sidb
       namespace: ordsnamespace
@@ -93,8 +99,6 @@ Refer to Single Instance Database (SIDB) [README](https://github.com/oracle/orac
             secretName:  ordssrvs-auth
             passwordKey: adminAuth
     " > ords-sidb.yaml
-
-    kubectl apply -f ords-sidb.yaml
     ```
 1. Watch the ordssrvs resource until the status is **Healthy**:
     ```bash

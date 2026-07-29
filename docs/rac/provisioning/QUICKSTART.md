@@ -45,6 +45,11 @@ Follow these steps to deploy a 2-node Oracle RAC Database using the Oracle RAC C
     
     # Check the logs of a particular pod. For example, to check status of pod "racnode1-0":    
     kubectl exec -it pod/racnode1-0 -n rac -- bash -c "tail -f /tmp/orod/oracle_db_setup.log"
+    ```
+
+    Example output:
+
+    ```text
     ===================================
     ORACLE RAC DATABASE IS READY TO USE
     ===================================
@@ -54,31 +59,35 @@ Follow these steps to deploy a 2-node Oracle RAC Database using the Oracle RAC C
 After deployment, obtain Oracle RAC Database details with these commands:
 ```bash
 - Check the status of the Oracle RAC Database Pods:
-$ kubectl get all -n rac -o wide
+kubectl get all -n rac -o wide
 
 - Get the details of the "racdatabases.database.oracle.com" object created:
-$ kubectl get racdatabases.database.oracle.com -n rac
+kubectl get racdatabases.database.oracle.com -n rac
 
 - Describe the "racdatabases.database.oracle.com" object for its details:
-$ kubectl describe racdatabases.database.oracle.com/racdbprov-sample -n rac
+kubectl describe racdatabases.database.oracle.com/racdbprov-sample -n rac
 
 - Switch to the RAC Database Nodes:
-$ kubectl exec -it pod/racnode1-0 -n rac /bin/bash
-$ kubectl exec -it pod/racnode2-0 -n rac /bin/bash
+kubectl exec -it pod/racnode1-0 -n rac /bin/bash
+kubectl exec -it pod/racnode2-0 -n rac /bin/bash
 
 - When you are logged inside the RAC Database Pod, switch to the "grid" user and run the following commands:
-[grid@racnode1-0 ~]$ /u01/app/19c/grid/bin/crsctl stat res -t
-[grid@racnode2-0 ~]$ /u01/app/19c/grid/bin/crsctl stat res -t
+srvctl status database -d PORCLCDB -v
+srvctl status database -d PORCLCDB -v
+srvctl config service -s soepdb -d PORCLCDB
+srvctl config service -s soepdb -d PORCLCDB
+```
 
-[grid@racnode1-0 ~]$ /u01/app/19c/grid/bin/srvctl config nodeapps
-[grid@racnode2-0 ~]$ /u01/app/19c/grid/bin/srvctl config nodeapps
+Example output:
+
+```text
+/u01/app/19c/grid/bin/crsctl stat res -t
+/u01/app/19c/grid/bin/crsctl stat res -t
+
+/u01/app/19c/grid/bin/srvctl config nodeapps
+/u01/app/19c/grid/bin/srvctl config nodeapps
 
 - Once inside the RAC Database Pod, switch to "oracle" user and run the commands as "oracle" user:
-[oracle@racnode1-0 ~]$ srvctl status database -d PORCLCDB -v
-[oracle@racnode2-0 ~]$ srvctl status database -d PORCLCDB -v
-
-[oracle@racnode1-0 ~]$ srvctl config service -s soepdb -d PORCLCDB
-[oracle@racnode2-0 ~]$ srvctl config service -s soepdb -d PORCLCDB
 ```
 
 ## Database Connection

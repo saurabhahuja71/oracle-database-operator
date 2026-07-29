@@ -152,6 +152,11 @@ kubectl exec -n testcase "$QUERY_POD" -- bash -c "
   curl -s -k -H \"Authorization: Bearer \$TOKEN\" \
   -G \"https://$PROMETHEUS_SVC/api/v1/query\" \
   --data-urlencode \"query=$PQUERY\"
+```
+
+Example output:
+
+```text
 "
 ```
 

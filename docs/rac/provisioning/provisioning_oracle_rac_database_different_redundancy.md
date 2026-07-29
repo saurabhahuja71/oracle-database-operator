@@ -50,6 +50,11 @@ Complete these steps:
     
     # Check the logs of a particular pod. For example, to check status of pod "racnode1-0":    
     kubectl exec -it pod/racnode1-0 -n rac -- bash -c "tail -f /tmp/orod/oracle_db_setup.log"
+    ```
+
+    Example output:
+
+    ```text
     ===================================
     ORACLE RAC DATABASE IS READY TO USE
     ===================================
@@ -63,7 +68,12 @@ Complete these steps:
     su - grid
     
     # Check the details of the diskgroups:
-    [grid@racnode1-0 ~]$ asmcmd lsdg
+    asmcmd lsdg
+    ```
+
+    Example output:
+
+    ```text
     State    Type    Rebal  Sector  Logical_Sector  Block       AU  Total_MB  Free_MB  Req_mir_free_MB  Usable_file_MB  Offline_disks  Voting_files  Name
     MOUNTED  EXTERN  N         512             512   4096  4194304    102392   102040                0          102040              0             Y  CRSDATA/
     MOUNTED  NORMAL  N         512             512   4096  1048576    204792   191624            51198           70213              0             N  DATA/

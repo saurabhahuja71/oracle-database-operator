@@ -26,7 +26,11 @@ echo
 printf '%s' "${DBPWD}" | kubectl create secret generic adb-oraoper-db-auth \
   --from-file=password=/dev/stdin \
   -n ordsnamespace
+```
 
+Example output:
+
+```text
 unset DBPWD
 ```
 

@@ -68,10 +68,15 @@ For a shared-zone customer handoff, validate all of the following:
 ```sh
 kubectl get svc -n default
 kubectl get svc -n default orcl-production-lb truecache-production-lb
-oci dns record rrset get --zone-name-or-id <shared-zone-ocid> --domain orcl-production.internal.example.com --rtype A --scope PRIVATE
-oci dns record rrset get --zone-name-or-id <shared-zone-ocid> --domain truecache-production.internal.example.com --rtype A --scope PRIVATE
 kubectl exec -n default <primary-pod> -- nslookup truecache-production.internal.example.com
 kubectl exec -n default <truecache-pod> -- nslookup orcl-production.internal.example.com
+```
+
+Example output:
+
+```text
+oci dns record rrset get --zone-name-or-id <shared-zone-ocid> --domain orcl-production.internal.example.com --rtype A --scope PRIVATE
+oci dns record rrset get --zone-name-or-id <shared-zone-ocid> --domain truecache-production.internal.example.com --rtype A --scope PRIVATE
 ```
 
 Expected results:

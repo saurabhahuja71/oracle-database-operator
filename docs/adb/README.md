@@ -274,6 +274,11 @@ To provision an Autonomous Database that will map objects in your cluster, compl
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_create.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample created
     ```
 
@@ -311,12 +316,17 @@ spec:
   ociConfig:
     configMapName: oci-cred
     secretName: oci-privatekey
-```
-
+```bash
 > Note: If dbWorkload is not specified, the database will be created using the default workload type (typically OLTP). Always set AJD explicitly when you intend to provision an Autonomous JSON Database.
 
 ## Bind to an existing Autonomous Database
 
+    kubectl delete adb/autonomousdatabase-sample
+```
+
+Example output:
+
+```text
 Other than provisioning a database, you can create the custom resource using an existing Autonomous Database.
 
 The operator also generates the `AutonomousBackup` custom resources if a database already has backups. The operator syncs the `AutonomousBackups` in every reconciliation loop by getting the list of OCIDs of the AutonomousBackups from OCI, and then creates the `AutonomousDatabaseBackup` object automatically if it cannot find a resource that has the same `AutonomousBackupOCID` in the cluster.
@@ -324,9 +334,7 @@ The operator also generates the `AutonomousBackup` custom resources if a databas
 1. Clean up the resource you created in the earlier provision operation:
 
     ```sh
-    kubectl delete adb/autonomousdatabase-sample
-    autonomousdatabase.database.oracle.com/autonomousdatabase-sample deleted
-    ```
+```
 
 2. Copy the `Autonomous Database OCID` from Cloud Console.
 
@@ -361,6 +369,11 @@ The operator also generates the `AutonomousBackup` custom resources if a databas
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_bind.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample created
     ```
 
@@ -394,6 +407,11 @@ You can scale up or scale down the Oracle Autonomous Database OCPU core count or
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_scale.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 
@@ -429,6 +447,11 @@ You can rename the database by changing the values of the `dbName` and `displayN
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_rename.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 
@@ -472,6 +495,11 @@ You can rename the database by changing the values of the `dbName` and `displayN
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_update_admin_password.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 
@@ -520,13 +548,23 @@ A client Wallet is required to connect to a shared Oracle Autonomous Database. U
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_wallet.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
-   ```
+    ```
 
 You should see a new Secret `instance-wallet` in your cluster:
 
 ```sh
-$ kubectl get secrets
+kubectl get secrets
+```
+
+Example output:
+
+```text
 NAME                         TYPE                                  DATA   AGE
 oci-privatekey               Opaque                                1      2d12h
 instance-wallet-password     Opaque                                1      2d12h
@@ -567,6 +605,11 @@ Here's a list of the values you can set for `action`:
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_stop_start_terminate.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 
@@ -600,6 +643,11 @@ To delete the resource and terminate the Autonomous Database, complete these ste
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_delete_resource.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 
@@ -607,6 +655,11 @@ To delete the resource and terminate the Autonomous Database, complete these ste
 
     ```sh
     kubectl delete adb/autonomousdatabase-sample
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample deleted
     ```
 
@@ -685,6 +738,11 @@ To clone an existing Autonomous Database, complete these steps:
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_clone.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 
@@ -723,6 +781,11 @@ To switchover an existing Autonomous Database, complete these steps:
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_switchover.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 
@@ -759,6 +822,11 @@ To manually failover an existing Autonomous Database, complete these steps:
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_failover.yaml
+    ```
+
+    Example output:
+
+    ```text
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 
