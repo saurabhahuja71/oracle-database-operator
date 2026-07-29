@@ -11,18 +11,20 @@ spec:
   
   ## Database ref. This can be of kind SingleInstanceDatabase.
   databaseRef: "sidb-sample"
-  
-  ## Secret containing databaseRef admin password mapped to secretKey.
-  adminPassword:
-    secretName: db-admin-secret
-    secretKey: oracle_pwd
-    keepSecret: true
 
-  ## Secret containing ORDS_PUBLIC_USER password mapped to secretKey.
-  ordsPassword:
-    secretName: ords-secret
-    secretKey: oracle_pwd
-    keepSecret: true
+  security:
+    secrets:
+      ## Secret containing databaseRef admin password mapped to secretKey.
+      databaseAdmin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      
+      ## Secret containing ORDS_PUBLIC_USER password mapped to secretKey.
+      ordsPublicUser:
+        secretName: ords-secret
+        secretKey: oracle_pwd
+        keepSecret: true
 
   ## ORDS image details
   image:
