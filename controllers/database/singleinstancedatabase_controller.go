@@ -7108,40 +7108,79 @@ func (r *SingleInstanceDatabaseReconciler) manageConvPhysicalToSnapshot(ctx cont
 			return requeueY, err
 		}
 
-	} else {
-		// Convert a SNAPSHOT_STANDBY -> PHYSICAL_STANDBY
-		singleInstanceDatabase.Status.Status = dbcommons.StatusUpdating
+		// Stop the current reconcile after persisting the conversion status.
+		// Later phases may hold an older SIDB object and overwrite
+		// Status.ConvertToSnapshotStandby.
+		log.Info(
+			"Snapshot standby conversion status saved; requesting fresh reconcile",
+			"convertToSnapshotStandby",
+			singleInstanceDatabase.Status.ConvertToSnapshotStandby,
+			"role",
+			singleInstanceDatabase.Status.Role,
+		)
 
-		if err := r.Status().Update(ctx, &singleInstanceDatabase); err != nil {
-			return requeueY, err
-		}
-
-		if err := convertSnapshotStdToPhysicalStdDB(r, &singleInstanceDatabase, &sidbReadyPod, ctx, req); err != nil {
-			switch err {
-			default:
-				r.Log.Error(err, err.Error())
-				return requeueY, nil
-			}
-		}
-
-		singleInstanceDatabase.Status.ConvertToSnapshotStandby = false
-		singleInstanceDatabase.Status.Status = dbcommons.StatusReady
-
-		// Get database role and update the status
-		sidbRole, err := dbcommons.GetDatabaseRole(sidbReadyPod, r, r.Config, ctx, req)
-		if err != nil {
-			return requeueN, err
-		}
-
-		log.Info("Database "+singleInstanceDatabase.Name, "Database Role : ", sidbRole)
-		singleInstanceDatabase.Status.Role = sidbRole
-
-		if err := r.Status().Update(ctx, &singleInstanceDatabase); err != nil {
-			return requeueY, err
-		}
+		return requeueY, nil
 	}
 
-	return requeueN, nil
+	// Convert a SNAPSHOT_STANDBY -> PHYSICAL_STANDBY.
+	singleInstanceDatabase.Status.Status = dbcommons.StatusUpdating
+
+	if err := r.Status().Update(ctx, &singleInstanceDatabase); err != nil {
+		return requeueY, err
+	}
+
+	if err := convertSnapshotStdToPhysicalStdDB(
+		r,
+		&singleInstanceDatabase,
+		&sidbReadyPod,
+		ctx,
+		req,
+	); err != nil {
+		log.Error(
+			err,
+			"failed to convert snapshot standby to physical standby",
+		)
+		return requeueY, nil
+	}
+
+	singleInstanceDatabase.Status.ConvertToSnapshotStandby = false
+	singleInstanceDatabase.Status.Status = dbcommons.StatusReady
+
+	// Get database role and update the status.
+	sidbRole, err := dbcommons.GetDatabaseRole(
+		sidbReadyPod,
+		r,
+		r.Config,
+		ctx,
+		req,
+	)
+	if err != nil {
+		return requeueN, err
+	}
+
+	log.Info(
+		"Database "+singleInstanceDatabase.Name,
+		"Database Role : ",
+		sidbRole,
+	)
+
+	singleInstanceDatabase.Status.Role = sidbRole
+
+	if err := r.Status().Update(ctx, &singleInstanceDatabase); err != nil {
+		return requeueY, err
+	}
+
+	// Stop the current reconcile after persisting the conversion status.
+	// The next reconcile will fetch the latest status and continue safely.
+	log.Info(
+		"Physical standby conversion status saved; requesting fresh reconcile",
+		"convertToSnapshotStandby",
+		singleInstanceDatabase.Status.ConvertToSnapshotStandby,
+		"role",
+		singleInstanceDatabase.Status.Role,
+	)
+
+	return requeueY, nil
 }
 
 func convertPhysicalStdToSnapshotStdDB(
