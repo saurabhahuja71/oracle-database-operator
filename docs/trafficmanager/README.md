@@ -1,13 +1,12 @@
-# Traffic Manager
+# Traffic Manager (Preview Mode in DB Operator 2.2.0 Release)
 
-`TrafficManager` is a `network.oracle.com/v4` custom resource that provisions a managed traffic endpoint in Kubernetes. The Oracle Database Operator reconciles it into a Deployment, one or two Services (internal and optional external), and mode-specific configuration.
+`TrafficManager` is a `network.oracle.com/v4` custom resource that provisions a managed Oracle Connection Manager endpoint for Oracle Database listener traffic in Kubernetes.
 
 | Mode | `spec.type` | Purpose |
 | --- | --- | --- |
-| NGINX | `nginx` | HTTP or HTTPS reverse proxy for `PrivateAi` REST API backends. |
 | CMAN | `cman` | Oracle Connection Manager for database listener traffic. |
 
-Use **NGINX** when clients call PrivateAI `/v1/*` REST endpoints. Use **CMAN** when clients connect to Oracle Database listener traffic through Oracle Connection Manager. A single `TrafficManager` resource should use one mode only.
+Use **CMAN** when clients connect to Oracle Database listener traffic through Oracle Connection Manager.
 
 **Short names:** `trm`, `cman`, `connectionmanager`
 
@@ -23,7 +22,6 @@ kubectl get trm -n <namespace>          # same resource
 - [What the Operator Creates](#what-the-operator-creates)
 - [Choosing a CMAN Configuration Pattern](#choosing-a-cman-configuration-pattern)
 - [Sample Manifests](#sample-manifests)
-- [NGINX Mode](#nginx-mode)
 - [CMAN Mode](#cman-mode)
 - [Field Reference](#field-reference)
 - [Status and Verification](#status-and-verification)
@@ -50,7 +48,6 @@ Use the canonical template for the complete configuration surface, or a focused 
 
 - Oracle Database Operator installed with the `TrafficManager` CRD (`network.oracle.com/v4`).
 - A container image for the chosen mode:
-  - **NGINX:** any supported `nginx` image (for example `nginx:1.27`).
   - **CMAN:** a CMAN container image compatible with your chosen configuration pattern. File-mode patterns that use `next_hop`, embedded `tnsnames.ora` aliases, or `use_service_as_tnsnames_alias` require image support for those features.
 - For external `LoadBalancer` Services on OCI, a cloud load-balancer controller (for example the OCI Cloud Controller Manager) must be installed. TrafficManager writes Service annotations; the cloud controller provisions the load balancer.
 
@@ -58,15 +55,13 @@ Use the canonical template for the complete configuration surface, or a focused 
 
 For every `TrafficManager`, the controller manages:
 
-| Resource | NGINX | CMAN |
-| --- | --- | --- |
-| Deployment | NGINX pod(s) with generated `nginx.conf` | CMAN pod(s) |
-| ConfigMap | Generated `nginx.conf` (`<name>-nginx`) | Only when `spec.cman.configSource` references an operator-managed source; file-mode ConfigMaps are typically user-created |
-| Internal Service | Cluster DNS endpoint (default enabled) | Listener on port 1521 (default) |
-| External Service | Optional `LoadBalancer` or other type | Optional `LoadBalancer` or other type |
-| REST port Service | — | Additional `rest` port when `spec.cman.restApi.enabled=true` |
-
-NGINX mode watches `PrivateAi` resources that reference the Traffic Manager and regenerates routing configuration as backends are added or removed. CMAN mode does not discover `PrivateAi` resources.
+| Resource | CMAN |
+| --- | --- |
+| Deployment | CMAN pod(s) |
+| ConfigMap | Only when `spec.cman.configSource` references an operator-managed source; file-mode ConfigMaps are typically user-created |
+| Internal Service | Listener on port 1521 (default) |
+| External Service | Optional `LoadBalancer` or other type |
+| REST port Service | Additional `rest` port when `spec.cman.restApi.enabled=true` |
 
 ## Choosing a CMAN Configuration Pattern
 
@@ -119,98 +114,9 @@ Use [`cman-sidb-peer-nexthop.yaml`](samples/cman-sidb-peer-nexthop.yaml) as the 
 
 Replace `<cman-container-image>`, `<subnet-ocid>`, and other placeholders before applying.
 
-## NGINX Mode
-
-NGINX mode discovers `PrivateAi` backends that set `spec.networking.trafficManager.ref` to the Traffic Manager name. Each backend gets a route path. The controller generates `nginx.conf`, creates a Deployment, and creates internal or external Services.
-
-### NGINX Use Cases
-
-| Use case | Configuration |
-| --- | --- |
-| One shared endpoint for multiple PrivateAI deployments | Create one `TrafficManager` with `spec.type: nginx`; set each `PrivateAi.spec.networking.trafficManager.ref` to that Traffic Manager. |
-| Path-based routing | Set unique backend paths such as `/finance/v1/` and `/hr/v1/`. |
-| Frontend TLS termination | Set `spec.security.tls.enabled: true` and provide `spec.security.tls.secretName`. |
-| Backend TLS verification | Set `spec.security.backendTLS.trustSecretName`; optionally set `trustFileName`, `mountLocation`, and `verify`. |
-| Private load balancer | Enable `spec.service.external` and add cloud-provider private load balancer annotations. |
-| Public load balancer | Enable `spec.service.external` with `serviceType: LoadBalancer`. |
-
-### NGINX Example
-
-```yaml
-apiVersion: network.oracle.com/v4
-kind: TrafficManager
-metadata:
-  name: pai-nginx
-  namespace: pai
-spec:
-  type: nginx
-  runtime:
-    image: nginx:1.27
-    replicas: 1
-  security:
-    tls:
-      enabled: true
-      secretName: nginx-tls
-      mountLocation: /etc/nginx/tls
-    backendTLS:
-      trustSecretName: pai-backend-ca
-      trustFileName: ca.crt
-      verify: true
-  service:
-    internal:
-      enabled: true
-    external:
-      enabled: true
-      serviceType: LoadBalancer
-      port: 443
-      targetPort: 8443
-      externalTrafficPolicy: Cluster
-```
-
-Bind a `PrivateAi` backend:
-
-```yaml
-apiVersion: privateai.oracle.com/v4
-kind: PrivateAi
-metadata:
-  name: pai-finance
-  namespace: pai
-spec:
-  networking:
-    trafficManager:
-      ref: pai-nginx
-      routePath: /finance/v1/
-```
-
-`routePath` must be an absolute path ending in `/`. If omitted, PrivateAI defaults it to `/<privateai-resource-name>/v1/`. A request to `/finance/v1/models` is rewritten to the backend `/v1/models` endpoint.
-
-### NGINX Private Load Balancer
-
-```yaml
-apiVersion: network.oracle.com/v4
-kind: TrafficManager
-metadata:
-  name: pai-nginx-private
-  namespace: pai
-spec:
-  type: nginx
-  runtime:
-    image: nginx:1.27
-  service:
-    internal:
-      enabled: true
-    external:
-      enabled: true
-      serviceType: LoadBalancer
-      annotations:
-        service.beta.kubernetes.io/oci-load-balancer-internal: "true"
-```
-
-For TLS certificate provisioning with cert-manager, see [PrivateAI TLS with cert-manager](../privateai/tls-cert-manager/README.md).
-
 ## CMAN Mode
 
-CMAN mode creates a CMAN Deployment and Services for Oracle Database listener traffic. It does not discover `PrivateAi` resources and does not use `PrivateAi.spec.networking.trafficManager.routePath`.
+CMAN mode creates a CMAN Deployment and Services for Oracle Database listener traffic through Oracle Connection Manager.
 
 CMAN can be configured in **generated** mode or **file** mode. See [Choosing a CMAN Configuration Pattern](#choosing-a-cman-configuration-pattern) above for a decision guide.
 
@@ -654,43 +560,34 @@ When using OCI LoadBalancer annotations, the Kubernetes cluster must have a clou
 
 | Field | Mode | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `apiVersion` | Both | Yes | None | Use `network.oracle.com/v4`. |
-| `kind` | Both | Yes | None | Use `TrafficManager`. |
-| `metadata.name` | Both | Yes | None | Traffic Manager name. Generated Deployment and internal Service use this name. |
-| `metadata.namespace` | Both | No | Current namespace | Namespace where Traffic Manager resources are created. |
-| `spec.type` | Both | No | `nginx` | Traffic Manager mode. Valid values are `nginx` and `cman`. |
-| `spec.runtime.image` | Both | Yes | None | Container image for the Traffic Manager pod. |
-| `spec.runtime.imagePullPolicy` | Both | No | `IfNotPresent` | Image pull policy. |
-| `spec.runtime.imagePullSecrets[]` | Both | No | None | Image pull Secret names. |
-| `spec.runtime.serviceAccountName` | Both | No | None | ServiceAccount used by the pod. Required for CMAN endpoint hostname mapping when the default ServiceAccount lacks Endpoint read access. |
-| `spec.runtime.replicas` | Both | No | `1` | Number of Traffic Manager pod replicas. For multi-replica CMAN with multiple backend services, prefer service-alias next-hop so every CMAN pod has identical local alias routing. |
-| `spec.runtime.resources` | Both | No | None | CPU and memory requests or limits. |
-| `spec.runtime.podSecurityContext` | Both | No | None | Pod security context. |
-| `spec.runtime.containerSecurityContext` | Both | No | None | Container security context. |
-| `spec.runtime.envVars[]` | Both | No | None | Extra environment variables for the Traffic Manager container. |
-| `spec.service.internal.enabled` | Both | No | `true` | Creates the in-cluster Service. |
-| `spec.service.internal.port` | Both | No | Mode-specific | Single Service port. For CMAN, default is `1521`. For NGINX without TLS, default is `8080`. |
-| `spec.service.internal.targetPort` | Both | No | Mode-specific | Target container port. For NGINX with TLS, default is `8443`. |
-| `spec.service.internal.ports[]` | Both | No | None | Explicit multi-port Service mapping. |
-| `spec.service.internal.annotations` | Both | No | None | Annotations for the internal Service. |
-| `spec.service.external.enabled` | Both | No | `false` | Creates the external Service. |
-| `spec.service.external.serviceType` | Both | No | `LoadBalancer` | External Service type. |
-| `spec.service.external.port` | Both | No | Mode-specific | Single external Service port. For NGINX with TLS, default is `443`; without TLS, `80`. |
-| `spec.service.external.targetPort` | Both | No | Mode-specific | External target container port. |
-| `spec.service.external.ports[]` | Both | No | None | Explicit external multi-port Service mapping. |
-| `spec.service.external.annotations` | Both | No | None | Cloud-provider annotations. |
-| `spec.service.external.externalTrafficPolicy` | Both | No | None | Kubernetes external traffic policy. |
-| `spec.service.external.loadBalancerIP` | Both | No | None | Requested load balancer IP. |
-| `spec.service.external.loadBalancerClass` | Both | No | None | Kubernetes load balancer class. |
-| `spec.security.tls.enabled` | NGINX | No | `false` | Enables frontend TLS for the NGINX listener. |
-| `spec.security.tls.secretName` | NGINX | Required when TLS enabled | None | TLS Secret containing `tls.crt` and `tls.key`. |
-| `spec.security.tls.mountLocation` | NGINX | Required when TLS enabled | `/etc/nginx/tls` | TLS Secret mount path. |
-| `spec.security.backendTLS.trustSecretName` | NGINX | Required when backendTLS set | None | Secret containing backend CA trust material. |
-| `spec.security.backendTLS.mountLocation` | NGINX | No | `/etc/nginx/backend-ca` | Backend CA Secret mount path. |
-| `spec.security.backendTLS.trustFileName` | NGINX | No | `ca.crt` | CA file name inside the backend trust Secret. |
-| `spec.security.backendTLS.verify` | NGINX | No | `true` when backendTLS set | Enables backend TLS certificate verification. |
-| `spec.nginx.config.configMapName` | NGINX | No | `<name>-nginx` | Generated NGINX ConfigMap name. |
-| `spec.nginx.config.mountLocation` | NGINX | No | `/etc/nginx` | Directory where `nginx.conf` is mounted. |
+| `apiVersion` | CMAN | Yes | None | Use `network.oracle.com/v4`. |
+| `kind` | CMAN | Yes | None | Use `TrafficManager`. |
+| `metadata.name` | CMAN | Yes | None | Traffic Manager name. Generated Deployment and internal Service use this name. |
+| `metadata.namespace` | CMAN | No | Current namespace | Namespace where Traffic Manager resources are created. |
+| `spec.type` | CMAN | No | `cman` | Traffic Manager mode. |
+| `spec.runtime.image` | CMAN | Yes | None | Container image for the Traffic Manager pod. |
+| `spec.runtime.imagePullPolicy` | CMAN | No | `IfNotPresent` | Image pull policy. |
+| `spec.runtime.imagePullSecrets[]` | CMAN | No | None | Image pull Secret names. |
+| `spec.runtime.serviceAccountName` | CMAN | No | None | ServiceAccount used by the pod. Required for CMAN endpoint hostname mapping when the default ServiceAccount lacks Endpoint read access. |
+| `spec.runtime.replicas` | CMAN | No | `1` | Number of Traffic Manager pod replicas. For multi-replica CMAN with multiple backend services, prefer service-alias next-hop so every CMAN pod has identical local alias routing. |
+| `spec.runtime.resources` | CMAN | No | None | CPU and memory requests or limits. |
+| `spec.runtime.podSecurityContext` | CMAN | No | None | Pod security context. |
+| `spec.runtime.containerSecurityContext` | CMAN | No | None | Container security context. |
+| `spec.runtime.envVars[]` | CMAN | No | None | Extra environment variables for the Traffic Manager container. |
+| `spec.service.internal.enabled` | CMAN | No | `true` | Creates the in-cluster Service. |
+| `spec.service.internal.port` | CMAN | No | `1521` | Internal CMAN Service port. |
+| `spec.service.internal.targetPort` | CMAN | No | `1521` | Target CMAN container port. |
+| `spec.service.internal.ports[]` | CMAN | No | None | Explicit multi-port Service mapping. |
+| `spec.service.internal.annotations` | CMAN | No | None | Annotations for the internal Service. |
+| `spec.service.external.enabled` | CMAN | No | `false` | Creates the external Service. |
+| `spec.service.external.serviceType` | CMAN | No | `LoadBalancer` | External Service type. |
+| `spec.service.external.port` | CMAN | No | `1521` | External CMAN Service port. |
+| `spec.service.external.targetPort` | CMAN | No | `1521` | Target CMAN container port. |
+| `spec.service.external.ports[]` | CMAN | No | None | Explicit external multi-port Service mapping. |
+| `spec.service.external.annotations` | CMAN | No | None | Cloud-provider annotations. |
+| `spec.service.external.externalTrafficPolicy` | CMAN | No | None | Kubernetes external traffic policy. |
+| `spec.service.external.loadBalancerIP` | CMAN | No | None | Requested load balancer IP. |
+| `spec.service.external.loadBalancerClass` | CMAN | No | None | Kubernetes load balancer class. |
 | `spec.cman.logLevel` | CMAN generated | No | `user` | CMAN log level. Not valid with file config. |
 | `spec.cman.traceLevel` | CMAN generated | No | `user` | CMAN trace level. Not valid with file config. |
 | `spec.cman.registrationInvitedNodes` | CMAN generated | No | `*` | CMAN invited nodes. Not valid with file config. |
@@ -721,29 +618,15 @@ Useful status fields:
 
 | Status field | Mode | Meaning |
 | --- | --- | --- |
-| `status.status` | Both | High-level reconcile state (`Ready`, `Error`, and so on). |
-| `status.type` | Both | Active mode (`nginx` or `cman`). |
-| `status.readyReplicas` | Both | Ready Deployment replicas. |
-| `status.internalService` | Both | Internal Service name. |
-| `status.externalService` | Both | External Service name when enabled. |
-| `status.externalEndpoint` | Both | Load balancer endpoint when reported by Kubernetes. |
-| `status.nginx.backendCount` | NGINX | Number of associated PrivateAI backends. |
-| `status.nginx.routes[]` | NGINX | Generated route-to-backend status. |
-| `status.nginx.configMode` | NGINX | NGINX config mode, currently managed. |
-| `status.nginx.tlsEnabled` | NGINX | Frontend TLS status. |
-| `status.nginx.backendTlsEnabled` | NGINX | Backend TLS verification status. |
+| `status.status` | CMAN | High-level reconcile state (`Ready`, `Error`, and so on). |
+| `status.type` | CMAN | Active mode (`cman`). |
+| `status.readyReplicas` | CMAN | Ready Deployment replicas. |
+| `status.internalService` | CMAN | Internal Service name. |
+| `status.externalService` | CMAN | External Service name when enabled. |
+| `status.externalEndpoint` | CMAN | Load balancer endpoint when reported by Kubernetes. |
 | `status.cman.configMode` | CMAN | `generated` or `file`. |
 | `status.cman.restHost` | CMAN | REST API host when enabled. |
-
-For NGINX routing verification with multiple PrivateAI backends:
-
-```sh
-kubectl get trafficmanager pai-nginx -n pai \
-  -o jsonpath='{.status.status}{"\n"}{.status.externalEndpoint}{"\n"}{.status.nginx.routes}{"\n"}'
-```
 
 ## Related Documentation
 
 - [SIDB documentation](../sidb/README.md) — required only when CMAN routes to SIDB resources.
-- [PrivateAI documentation](../privateai/README.md) — includes a multi-backend NGINX Traffic Manager walkthrough.
-- [PrivateAI TLS with cert-manager](../privateai/tls-cert-manager/README.md) — TLS Secret provisioning for NGINX Traffic Manager frontends.
