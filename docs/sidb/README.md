@@ -1824,7 +1824,6 @@ The scripts volume can provide `setup` and `startup` scripts for custom executio
 For standby workflows, use:
 
 - `spec.createAs`
-- `spec.convertToSnapshotStandby` is the legacy SIDB-only conversion field. For Data Guard Broker topology resources, use `spec.operations.roleConversion` described above.
 
 ### Changing Init Parameters
 
@@ -1913,15 +1912,16 @@ metadata:
 spec:
   databaseRef: sidb-sample
 
-  adminPassword:
-    secretName: db-admin-secret
-    secretKey: oracle_pwd
-    keepSecret: true
-
-  ordsPassword:
-    secretName: ords-secret
-    secretKey: oracle_pwd
-    keepSecret: true
+  security:
+    secrets:
+      databaseAdmin:
+        secretName: db-admin-secret
+        secretKey: oracle_pwd
+        keepSecret: true
+      ordsPublicUser:
+        secretName: ords-secret
+        secretKey: oracle_pwd
+        keepSecret: true
 
   image:
     pullFrom: container-registry.oracle.com/database/ords-developer:latest
