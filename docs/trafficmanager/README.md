@@ -69,10 +69,12 @@ CMAN does **not** create database backends. For samples that route to more than 
 | Sample | Backends referenced | Deploy before CMAN |
 | --- | --- | --- |
 | [`cman-sidb.yaml`](samples/cman-sidb.yaml) | 1 × `sidb-sample` | One SIDB with PDB service `apppdb1` |
+| [`cman-sidb-filemode.yaml`](samples/cman-sidb-filemode.yaml) | 1 × `sidb-sample` | One SIDB; plain user-managed `cman.ora` (no `next_hop`) |
 | [`cman-sidb-nexthop.yaml`](samples/cman-sidb-nexthop.yaml) | 1 × `sidb-sample` | One SIDB with service `apppdb1` |
 | [`cman-sidb-peer.yaml`](samples/cman-sidb-peer.yaml) | `sidb-sample`, `sidb-cman-peer` | **Two SIDBs** with services `apppdb1` and `apppdb2` |
 | [`cman-sidb-default.yaml`](samples/cman-sidb-default.yaml) | `sidb-sample`, `sidb-cman-peer` | **Two SIDBs** with services `apppdb1` and `apppdb2` |
 | [`cman-sidb-peer-nexthop.yaml`](samples/cman-sidb-peer-nexthop.yaml) | `sidb-sample`, `sidb-cman-peer` | **Two SIDBs** with services `apppdb1` and `apppdb2` |
+| [`config/samples/trafficmanager/trafficmanager.yaml`](../../config/samples/trafficmanager/trafficmanager.yaml) | `database-one`, `database-two` (template names) | **Two or more backends**; canonical multi-backend file-mode template |
 | [`cman-rac.yaml`](samples/cman-rac.yaml) | 1 × RAC SCAN | RAC database in namespace `rac` |
 | [`cman-rac-nexthop.yaml`](samples/cman-rac-nexthop.yaml) | 1 × RAC SCAN | RAC database in namespace `rac` |
 
@@ -230,8 +232,9 @@ flowchart TD
 | **Two or more SIDBs — generated rules (`dst=*`)** | Generated `spec.cman.rules[]` | 2+ | **Required on each database** after CMAN is Healthy | `@//<cman-ip>:1521/<service-name>` per backend | Multiple SIDBs each register a different service name with CMAN | [`cman-sidb-peer.yaml`](samples/cman-sidb-peer.yaml) |
 | **Two or more SIDBs — generated rules (explicit `dst`)** | Generated `spec.cman.rules[]` | 2+ | **Required on each database** after CMAN is Healthy | `@//<cman-ip>:1521/<service-name>` | Same as peer sample, but each rule uses an explicit backend Service hostname in `dst` | [`cman-sidb-default.yaml`](samples/cman-sidb-default.yaml) |
 | **Single SIDB — global `next_hop`** | File `spec.cman.configSource` | 1 | **Not required** | `@//<cman-ip>:1521/<service-name>` | One backend; CMAN forwards all accepted traffic to one SIDB listener | [`cman-sidb-nexthop.yaml`](samples/cman-sidb-nexthop.yaml) |
+| **Single SIDB — user-managed `cman.ora`** | File `spec.cman.configSource` | 1 | **Not required** (unless your `cman.ora` expects registration) | Depends on `rule_list` in your file | You supply a complete `cman.ora`; no generated rules, no `next_hop` | [`cman-sidb-filemode.yaml`](samples/cman-sidb-filemode.yaml) |
 | **Two or more SIDBs — service-alias `next_hop`** | File `spec.cman.configSource` | 2+ | **Not required** | `@//<cman-ip>:1521/apppdb1`, `@//<cman-ip>:1521/apppdb2`, … | Multiple backends; each requested service name selects a different SIDB through embedded `tnsnames.ora` aliases | [`cman-sidb-peer-nexthop.yaml`](samples/cman-sidb-peer-nexthop.yaml) |
-| **User-managed `cman.ora`** | File `spec.cman.configSource` | User-defined | Depends on the file | Depends on the file | You supply a complete CMAN configuration | [`cman-sidb-filemode.yaml`](samples/cman-sidb-filemode.yaml) |
+| **Two or more SIDBs — user-managed `cman.ora` (template)** | File `spec.cman.configSource` | 2+ | **Not required** for alias/next-hop patterns | `@//<cman-ip>:1521/<alias>` per backend | Full multi-backend file-mode template with embedded aliases, rules, and optional `next_hop` comments | [`config/samples/trafficmanager/trafficmanager.yaml`](../../config/samples/trafficmanager/trafficmanager.yaml) |
 | **Single RAC — generated rules** | Generated `spec.cman.rules[]` | 1 RAC | **Required** (add CMAN listener to RAC `remote_listener`) | `@//<cman-ip>:1521/<rac-service>` | RAC services register dynamically with CMAN | [`cman-rac.yaml`](samples/cman-rac.yaml) |
 | **Single RAC — global `next_hop` to SCAN** | File `spec.cman.configSource` | 1 RAC SCAN | **Not required** | `@//<cman-ip>:1521/<service-name>` | RAC does not register with CMAN; CMAN forwards to RAC SCAN | [`cman-rac-nexthop.yaml`](samples/cman-rac-nexthop.yaml) |
 | **CMAN REST API** | Generated `spec.cman.rules[]` + `restApi` | 1+ | Same as generated rules | REST clients use the `rest` Service port | Programmatic CMAN administration in generated mode | [`cman-rest-api.yaml`](samples/cman-rest-api.yaml) |
@@ -242,6 +245,7 @@ flowchart TD
 | --- | --- | --- | --- |
 | Generated rules (single or multiple SIDBs) | Yes — all backends **Healthy** | Yes — wait **Healthy** | Set `remote_listener` + `ALTER SYSTEM REGISTER` on **each** database |
 | Global `next_hop` or service-alias `next_hop` | Yes — all backends **Healthy** | Yes — wait **Healthy** | Connect directly — **no** `remote_listener` |
+| User-managed `cman.ora` (single or multi-backend file mode) | Yes — all backends **Healthy** | Yes — wait **Healthy** | Connect per your `cman.ora`; use `remote_listener` only if your file expects database registration |
 | RAC generated rules | Yes — RAC in namespace `rac` | Yes | Update RAC `remote_listener` + `ALTER SYSTEM REGISTER` on each instance |
 
 ## Sample Manifests
@@ -263,9 +267,10 @@ The focused examples under [`samples/`](samples/) use SIDB Services for concrete
 | [`cman-sidb.yaml`](samples/cman-sidb.yaml) | 1 | 1 | Generated rule with permissive `dst=*` |
 | [`cman-sidb-peer.yaml`](samples/cman-sidb-peer.yaml) | 1 | 2 | One generated rule per SIDB/service pair with permissive `dst=*` |
 | [`cman-sidb-default.yaml`](samples/cman-sidb-default.yaml) | 1 | 2 | Generated rules with explicit SIDB `dst` hostnames |
-| [`cman-sidb-filemode.yaml`](samples/cman-sidb-filemode.yaml) | 1 | User-defined | Complete user-managed `cman.ora` from a ConfigMap |
+| [`cman-sidb-filemode.yaml`](samples/cman-sidb-filemode.yaml) | 1 | 1 | Plain user-managed `cman.ora` from a ConfigMap (no `next_hop`) |
 | [`cman-sidb-nexthop.yaml`](samples/cman-sidb-nexthop.yaml) | 1 | 1 | One global `next_hop`; all accepted traffic goes to the same SIDB |
 | [`cman-sidb-peer-nexthop.yaml`](samples/cman-sidb-peer-nexthop.yaml) | 2 | 2 | Service-aware next-hop aliases; each requested service selects its SIDB backend |
+| [`trafficmanager.yaml`](../../config/samples/trafficmanager/trafficmanager.yaml) | 2 | 2+ | Canonical multi-backend file-mode template with embedded aliases and rules |
 | [`cman-rac.yaml`](samples/cman-rac.yaml) | 1 | 1 RAC database | Generated mode with manual RAC service registration through `remote_listener` |
 | [`cman-rac-nexthop.yaml`](samples/cman-rac-nexthop.yaml) | 1 | 1 RAC SCAN | Global `next_hop` to a RAC SCAN Service for the accepted PDB service |
 | [`cman-rest-api.yaml`](samples/cman-rest-api.yaml) | 1 | 1 | Generated mode with CMAN REST API enabled |
@@ -586,7 +591,13 @@ rules:
 
 File mode mounts one ConfigMap key as the CMAN `cman.ora` source. In this mode, `cman.ora` is the source of truth.
 
+#### Single SIDB — plain user-managed `cman.ora`
+
+Use this when one SIDB is the backend and you want full control of `cman.ora` without generated rules or `next_hop`.
+
 Sample file: [`samples/cman-sidb-filemode.yaml`](samples/cman-sidb-filemode.yaml)
+
+**Prerequisite:** Deploy `sidb-sample` before CMAN. `remote_listener` is not required unless your `cman.ora` is written for database registration through CMAN.
 
 ```yaml
 apiVersion: v1
@@ -679,6 +690,17 @@ CMAN_cman-sidb.default.svc.cluster.local =
 ```
 
 When `configSource` is set, do not set `spec.cman.rules`, `logLevel`, `traceLevel`, `registrationInvitedNodes`, or `restApi`. The admission webhook rejects those combinations because the mounted file is the source of truth.
+
+#### Two or more SIDBs — user-managed `cman.ora`
+
+For multiple backends in file mode, use the canonical template or the focused peer next-hop sample:
+
+| Sample | Backends | Routing in `cman.ora` |
+| --- | ---: | --- |
+| [`cman-sidb-peer-nexthop.yaml`](samples/cman-sidb-peer-nexthop.yaml) | 2 | Embedded `tnsnames.ora` aliases + `use_service_as_tnsnames_alias=on` |
+| [`config/samples/trafficmanager/trafficmanager.yaml`](../../config/samples/trafficmanager/trafficmanager.yaml) | 2+ | Full template with alias block, accept rules, and commented `next_hop` alternatives |
+
+**Prerequisite:** Deploy every backend SIDB (for example `sidb-sample` and `sidb-cman-peer`) before CMAN. `remote_listener` is not required for alias/next-hop file-mode patterns.
 
 ### Global Next-Hop File Mode
 
