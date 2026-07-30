@@ -20,9 +20,11 @@ data:
           (address=(protocol=tcp)(host=racnode-scan.rac.svc.cluster.local)(port=1521))
         )
       )
-      (parameter_list=
+      (parameter_list =
         (connection_statistics=yes)
+        (log_directory=/u01/app/oracle/product/23ai/client_1/network/log)
         (log_level=user)
+        (trace_directory=/u01/app/oracle/product/23ai/client_1/network/trace)
         (trace_level=user)
         (valid_node_checking_registration=on)
         (registration_invited_nodes=*)
@@ -43,7 +45,7 @@ metadata:
 spec:
   type: cman
   runtime:
-    image: "phx.ocir.io/intsanjaysingh/db-repo/oracle/client-cman:23.26.1"
+    image: "<cman-container-image-with-next-hop-support>"
     imagePullPolicy: Always
     replicas: 1
   service:
@@ -61,7 +63,7 @@ spec:
         oci.oraclecloud.com/load-balancer-type: "nlb"
         oci-network-load-balancer.oraclecloud.com/internal: "true"
         oci-network-load-balancer.oraclecloud.com/is-preserve-source: "false"
-        oci-network-load-balancer.oraclecloud.com/subnet: "ocid1.subnet.oc1.iad.aaaaaaaaed2gazysocuzpsxkpubborao5iccxlnfloiijtmfybqf5eskibjq"
+        oci-network-load-balancer.oraclecloud.com/subnet: "<subnet-ocid>"
       ports:
         - name: cman
           port: 1521

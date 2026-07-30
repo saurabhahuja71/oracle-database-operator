@@ -9,7 +9,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: cman-sidb-nexthop-config
+  name: cman-sidb-peer-nexthop-config
   namespace: default
 data:
   cman.ora: |
@@ -91,5 +91,5 @@ spec:
   cman:
     configSource:
       configMapRef:
-        name: cman-sidb-nexthop-config
+        name: cman-sidb-peer-nexthop-config
         key: cman.ora

@@ -1,21 +1,19 @@
-# Scenario: one CMAN replica serving a RAC database through dynamic service
-# registration, without next_hop.
+# Scenario: one CMAN replica with generated rules and the CMAN REST API enabled.
 #
-# This is generated mode: TrafficManager creates cman.ora from spec.cman.rules.
-# RAC must register its services with CMAN. Preserve the RAC SCAN listener and
-# add the CMAN internal listener to the RAC remote_listener parameter, then run
-# ALTER SYSTEM REGISTER on every RAC instance.
+# REST API is valid only in generated config mode. Create the Secret before
+# applying this manifest:
 #
-# Example remote_listener value:
-#   racnode-scan:1521,cman-rac.rac.svc.cluster.local:1521
+#   kubectl create secret generic cman-rest-secret -n default \
+#     --from-literal=RESTpwdsecret='<rest-password>' \
+#     --from-literal=RESTkeysecret='<rest-private-key>'
 #
-# Use cman-rac-nexthop.yaml instead when RAC will not register with CMAN and all
-# accepted traffic can be forwarded to one RAC SCAN listener.
+# Replace the image, subnet OCID, namespace, backend host, and rule values for
+# your environment.
 apiVersion: network.oracle.com/v4
 kind: TrafficManager
 metadata:
-  name: cman-rac
-  namespace: rac
+  name: cman-tm-rest
+  namespace: default
 spec:
   type: cman
   runtime:
@@ -47,8 +45,17 @@ spec:
     traceLevel: user
     registrationInvitedNodes: "*"
     rules:
-      - host: racnode-scan.rac.svc.cluster.local
+      - host: sidb-sample.default.svc.cluster.local
         src: "*"
-        dst: racnode-scan.rac.svc.cluster.local
-        srv: soepdb
+        dst: "*"
+        srv: apppdb1
         action: accept
+    restApi:
+      enabled: true
+      port: 1525
+      passwordSecretRef:
+        name: cman-rest-secret
+        key: RESTpwdsecret
+      privateKeySecretRef:
+        name: cman-rest-secret
+        key: RESTkeysecret

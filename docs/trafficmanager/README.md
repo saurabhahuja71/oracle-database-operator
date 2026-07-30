@@ -1,6 +1,16 @@
-# Traffic Manager (Preview Mode in DB Operator 2.2.0 Release)
+# Oracle Database Operator for Kubernetes: Traffic Manager and Oracle Connection Manager (CMAN)
 
-`TrafficManager` is a `network.oracle.com/v4` custom resource that provisions a managed Oracle Connection Manager endpoint for Oracle Database listener traffic in Kubernetes.
+> **Preview mode:** Traffic Manager is available in preview in Oracle Database Operator 2.2.0.
+
+`TrafficManager` is a `network.oracle.com/v4` custom resource that provisions a managed Oracle Connection Manager (CMAN) endpoint for Oracle Database listener traffic in Kubernetes.
+
+Use this document when you want to:
+
+- Deploy Oracle Connection Manager through the Oracle Database Operator
+- Route client connections to SIDB, RAC, or external Oracle Database listeners through CMAN
+- Choose between generated CMAN rules and file-mode `cman.ora` configuration
+- Configure global `next_hop` or service-alias next-hop routing
+- Verify CMAN status and test database connectivity
 
 | Mode | `spec.type` | Purpose |
 | --- | --- | --- |
@@ -10,7 +20,7 @@ Use **CMAN** when clients connect to Oracle Database listener traffic through Or
 
 **Short names:** `trm`, `cman`, `connectionmanager`
 
-```sh
+```bash
 kubectl get trafficmanager -n <namespace>
 kubectl get trm -n <namespace>          # same resource
 ```
@@ -19,12 +29,14 @@ kubectl get trm -n <namespace>          # same resource
 
 - [Before You Begin](#before-you-begin)
 - [Prerequisites](#prerequisites)
+- [Quick Start: Deploy CMAN TrafficManager](#quick-start-deploy-cman-trafficmanager)
 - [What the Operator Creates](#what-the-operator-creates)
 - [Choosing a CMAN Configuration Pattern](#choosing-a-cman-configuration-pattern)
 - [Sample Manifests](#sample-manifests)
 - [CMAN Mode](#cman-mode)
 - [Field Reference](#field-reference)
 - [Status and Verification](#status-and-verification)
+- [Troubleshooting](#troubleshooting)
 - [Related Documentation](#related-documentation)
 
 ## Before You Begin
@@ -50,6 +62,41 @@ Use the canonical template for the complete configuration surface, or a focused 
 - A container image for the chosen mode:
   - **CMAN:** a CMAN container image compatible with your chosen configuration pattern. File-mode patterns that use `next_hop`, embedded `tnsnames.ora` aliases, or `use_service_as_tnsnames_alias` require image support for those features.
 - For external `LoadBalancer` Services on OCI, a cloud load-balancer controller (for example the OCI Cloud Controller Manager) must be installed. TrafficManager writes Service annotations; the cloud controller provisions the load balancer.
+
+## Quick Start: Deploy CMAN TrafficManager
+
+This is the fastest path for a new CMAN endpoint using global `next_hop` file mode. It does not require setting database `remote_listener`.
+
+1. Complete the [operator installation prerequisites](../../README.md#prerequisites) and deploy at least one reachable Oracle Database listener.
+2. Copy [`samples/cman-sidb-nexthop.yaml`](samples/cman-sidb-nexthop.yaml) and replace `<cman-container-image-with-next-hop-support>`, `<subnet-ocid>`, and backend Service or service names for your environment.
+3. Apply the manifest and wait for the TrafficManager to become ready.
+4. Retrieve the external endpoint and test a database connection through CMAN.
+
+If you are running commands from the repository root:
+
+```bash
+kubectl apply -f docs/trafficmanager/samples/cman-sidb-nexthop.yaml
+kubectl wait --for=condition=Ready trafficmanager/cman-sidb -n default --timeout=300s
+kubectl get trafficmanager cman-sidb -n default \
+  -o jsonpath='{.status.status}{"\n"}{.status.externalEndpoint}{"\n"}'
+```
+
+Retrieve the external Service address when `status.externalEndpoint` is not yet populated:
+
+```bash
+kubectl get svc -n default -l app.kubernetes.io/component=traffic-manager \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.loadBalancer.ingress[0].ip}{"\n"}{end}'
+```
+
+Test connectivity after the external endpoint is available:
+
+```bash
+sqlplus 'sys/<password>@//<cman-external-ip>:1521/apppdb1 as sysdba'
+```
+
+For generated rules with `remote_listener` registration, start with [`samples/cman-sidb.yaml`](samples/cman-sidb.yaml) instead. For multiple backends or CMAN replicas, see [Choosing a CMAN Configuration Pattern](#choosing-a-cman-configuration-pattern).
+
+**Important:** Most SIDB-focused samples use `metadata.name: cman-sidb`. Apply only one sample per namespace, or rename `metadata.name` and the CMAN listener hostname in `cman.ora` before applying another sample.
 
 ## What the Operator Creates
 
@@ -81,10 +128,12 @@ flowchart TD
 
 | Pattern | TrafficManager mode | Database `remote_listener` | Client connect string | Use when | Sample |
 | --- | --- | --- | --- | --- | --- |
-| Generated CMAN rules | Generated config with `spec.cman.rules[]` | Usually set to the CMAN internal or external listener address so the database registers through CMAN | Easy Connect to CMAN, or source-route descriptor when needed | The operator manifest should own simple CMAN filtering rules. | [`samples/cman-sidb.yaml`](samples/cman-sidb.yaml), [`samples/cman-sidb-peer.yaml`](samples/cman-sidb-peer.yaml) |
+| Generated CMAN rules | Generated config with `spec.cman.rules[]` | Usually set to the CMAN internal or external listener address so the database registers through CMAN | Easy Connect to CMAN, or source-route descriptor when needed | The operator manifest should own simple CMAN filtering rules. | [`samples/cman-sidb.yaml`](samples/cman-sidb.yaml), [`samples/cman-sidb-peer.yaml`](samples/cman-sidb-peer.yaml), [`samples/cman-sidb-default.yaml`](samples/cman-sidb-default.yaml) |
+| Generated CMAN rules with explicit `dst` | Generated config with `spec.cman.rules[]` and explicit destination hostnames | Usually set to the CMAN internal or external listener address | Easy Connect to CMAN, or source-route descriptor when needed | Destination filtering must match the backend Service hostname instead of `dst=*`. | [`samples/cman-sidb-default.yaml`](samples/cman-sidb-default.yaml) |
 | File-mode `cman.ora` | File config with `spec.cman.configSource.configMapRef` | Depends on the supplied file | Whatever the supplied `cman.ora` supports | You already have a complete CMAN configuration file. | [`samples/cman-sidb-filemode.yaml`](samples/cman-sidb-filemode.yaml) |
 | Global `next_hop` | File config with `next_hop` in `cman.ora` | Not required | Easy Connect to CMAN using the backend service name | One CMAN endpoint forwards to one backend listener or one backend service set. | [`samples/cman-sidb-nexthop.yaml`](samples/cman-sidb-nexthop.yaml) |
 | Service-alias next-hop | File config with `use_service_as_tnsnames_alias=on` and CMAN-side `tnsnames.ora` aliases | Not required | Easy Connect to CMAN using aliases such as `apppdb1` and `apppdb2` | One CMAN endpoint must route different requested service names to different backend Services. | [`samples/cman-sidb-peer-nexthop.yaml`](samples/cman-sidb-peer-nexthop.yaml) |
+| CMAN REST API | Generated config with `spec.cman.restApi.enabled=true` | Same as generated rules | REST clients use the exposed `rest` Service port | You need programmatic CMAN administration in generated mode. | [`samples/cman-rest-api.yaml`](samples/cman-rest-api.yaml) |
 
 ## Sample Manifests
 
@@ -108,11 +157,20 @@ The focused examples under [`samples/`](samples/) use SIDB Services for concrete
 | [`cman-sidb-peer-nexthop.yaml`](samples/cman-sidb-peer-nexthop.yaml) | 2 | 2 | Service-aware next-hop aliases; each requested service selects its SIDB backend |
 | [`cman-rac.yaml`](samples/cman-rac.yaml) | 1 | 1 RAC database | Generated mode with manual RAC service registration through `remote_listener` |
 | [`cman-rac-nexthop.yaml`](samples/cman-rac-nexthop.yaml) | 1 | 1 RAC SCAN | Global `next_hop` to a RAC SCAN Service for the accepted PDB service |
+| [`cman-rest-api.yaml`](samples/cman-rest-api.yaml) | 1 | 1 | Generated mode with CMAN REST API enabled |
 | [`cman-sidb-filemode.cman.ora`](samples/cman-sidb-filemode.cman.ora) | N/A | User-defined | Standalone `cman.ora` reference |
 
 Use [`cman-sidb-peer-nexthop.yaml`](samples/cman-sidb-peer-nexthop.yaml) as the focused SIDB reference for multiple CMAN replicas, multiple database backends, and per-service next-hop routing. A global `next_hop` is not service-aware; the sample uses `use_service_as_tnsnames_alias=on` and one `tnsnames.ora` alias per database/service pair instead of declaring multiple global `next_hop` blocks.
 
-Replace `<cman-container-image>`, `<subnet-ocid>`, and other placeholders before applying.
+Replace `<cman-container-image>`, `<subnet-ocid>`, and other placeholders before applying. RAC samples use namespace `rac`; create that namespace and deploy RAC resources there before applying them.
+
+Apply any focused sample from the repository root:
+
+```bash
+kubectl apply -f docs/trafficmanager/samples/<sample-file>.yaml
+kubectl get trafficmanager -n <namespace>
+kubectl describe trafficmanager <name> -n <namespace>
+```
 
 ## CMAN Mode
 
@@ -124,6 +182,8 @@ CMAN can be configured in **generated** mode or **file** mode. See [Choosing a C
 
 Generated config mode uses `spec.cman.rules[]`. The controller passes those rules to the CMAN container, and the CMAN container generates `cman.ora` at startup.
 
+Sample file: [`samples/cman-sidb.yaml`](samples/cman-sidb.yaml)
+
 ```yaml
 apiVersion: network.oracle.com/v4
 kind: TrafficManager
@@ -133,16 +193,16 @@ metadata:
 spec:
   type: cman
   runtime:
-    image: <cman-container-image>
+    image: "<cman-container-image>"
     imagePullPolicy: Always
     replicas: 1
   service:
     internal:
       enabled: true
       ports:
-      - name: cman
-        port: 1521
-        targetPort: 1521
+        - name: cman
+          port: 1521
+          targetPort: 1521
     external:
       enabled: true
       serviceType: LoadBalancer
@@ -153,19 +213,125 @@ spec:
         oci-network-load-balancer.oraclecloud.com/is-preserve-source: "false"
         oci-network-load-balancer.oraclecloud.com/subnet: "<subnet-ocid>"
       ports:
-      - name: cman
-        port: 1521
-        targetPort: 1521
+        - name: cman
+          port: 1521
+          targetPort: 1521
   cman:
     logLevel: user
     traceLevel: user
     registrationInvitedNodes: "*"
     rules:
-    - host: sidb-sample.default.svc.cluster.local
-      src: "*"
-      dst: sidb-sample-n7afl
-      srv: apppdb1
-      action: accept
+      - host: sidb-sample.default.svc.cluster.local
+        src: "*"
+        dst: "*"
+        srv: apppdb1
+        action: accept
+```
+
+#### Generated rules: two SIDBs with permissive `dst`
+
+Sample file: [`samples/cman-sidb-peer.yaml`](samples/cman-sidb-peer.yaml)
+
+```yaml
+apiVersion: network.oracle.com/v4
+kind: TrafficManager
+metadata:
+  name: cman-sidb
+  namespace: default
+spec:
+  type: cman
+  runtime:
+    image: "<cman-container-image>"
+    imagePullPolicy: Always
+    replicas: 1
+  service:
+    internal:
+      enabled: true
+      ports:
+        - name: cman
+          port: 1521
+          targetPort: 1521
+    external:
+      enabled: true
+      serviceType: LoadBalancer
+      externalTrafficPolicy: Local
+      annotations:
+        oci.oraclecloud.com/load-balancer-type: "nlb"
+        oci-network-load-balancer.oraclecloud.com/internal: "true"
+        oci-network-load-balancer.oraclecloud.com/is-preserve-source: "false"
+        oci-network-load-balancer.oraclecloud.com/subnet: "<subnet-ocid>"
+      ports:
+        - name: cman
+          port: 1521
+          targetPort: 1521
+  cman:
+    logLevel: user
+    traceLevel: user
+    registrationInvitedNodes: "*"
+    rules:
+      - host: sidb-sample.default.svc.cluster.local
+        src: "*"
+        dst: "*"
+        srv: apppdb1
+        action: accept
+      - host: sidb-cman-peer.default.svc.cluster.local
+        src: "*"
+        dst: "*"
+        srv: apppdb2
+        action: accept
+```
+
+#### Generated rules: two SIDBs with explicit `dst`
+
+Sample file: [`samples/cman-sidb-default.yaml`](samples/cman-sidb-default.yaml)
+
+```yaml
+apiVersion: network.oracle.com/v4
+kind: TrafficManager
+metadata:
+  name: cman-sidb
+  namespace: default
+spec:
+  type: cman
+  runtime:
+    image: "<cman-container-image>"
+    imagePullPolicy: Always
+    replicas: 1
+  service:
+    internal:
+      enabled: true
+      ports:
+        - name: cman
+          port: 1521
+          targetPort: 1521
+    external:
+      enabled: true
+      serviceType: LoadBalancer
+      externalTrafficPolicy: Local
+      annotations:
+        oci.oraclecloud.com/load-balancer-type: "nlb"
+        oci-network-load-balancer.oraclecloud.com/internal: "true"
+        oci-network-load-balancer.oraclecloud.com/is-preserve-source: "false"
+        oci-network-load-balancer.oraclecloud.com/subnet: "<subnet-ocid>"
+      ports:
+        - name: cman
+          port: 1521
+          targetPort: 1521
+  cman:
+    logLevel: user
+    traceLevel: user
+    registrationInvitedNodes: "*"
+    rules:
+      - host: sidb-sample.default.svc.cluster.local
+        src: "*"
+        dst: sidb-sample.default.svc.cluster.local
+        srv: apppdb1
+        action: accept
+      - host: sidb-cman-peer.default.svc.cluster.local
+        src: "*"
+        dst: sidb-cman-peer.default.svc.cluster.local
+        srv: apppdb2
+        action: accept
 ```
 
 Valid rule actions are `accept`, `reject`, and `drop`.
@@ -236,6 +402,12 @@ subjects:
   namespace: <cman-namespace>
 ```
 
+Save the Role and RoleBinding to a file such as `cman-endpoints-rbac.yaml`, then apply it in the database Service namespace:
+
+```bash
+kubectl apply -f cman-endpoints-rbac.yaml
+```
+
 For SYSDBA connections that use Easy Connect through CMAN, use a broad service match unless you have verified the exact CMAN service selector required by your client descriptor:
 
 ```yaml
@@ -251,11 +423,13 @@ rules:
 
 File mode mounts one ConfigMap key as the CMAN `cman.ora` source. In this mode, `cman.ora` is the source of truth.
 
+Sample file: [`samples/cman-sidb-filemode.yaml`](samples/cman-sidb-filemode.yaml)
+
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: cman-user-config
+  name: cman-sidb-filemode-config
   namespace: default
 data:
   cman.ora: |
@@ -264,13 +438,18 @@ data:
       (address=(protocol=tcp)(host=cman-sidb.default.svc.cluster.local)(port=1521))
       (parameter_list =
         (connection_statistics=yes)
+        (log_directory=/u01/app/oracle/product/23ai/client_1/network/log)
         (log_level=user)
+        (trace_directory=/u01/app/oracle/product/23ai/client_1/network/trace)
         (trace_level=user)
         (valid_node_checking_registration=on)
         (registration_invited_nodes=*)
       )
       (rule_list=
-        (rule=(src=*)(dst=*)(srv=*)(act=accept))
+        (rule=
+           (src=*)(dst=*)(srv=*)(act=accept)
+           (action_list=(aut=off)(moct=0)(mct=0)(mit=0)(conn_stats=on))
+        )
       )
     )
 ---
@@ -282,12 +461,58 @@ metadata:
 spec:
   type: cman
   runtime:
-    image: <cman-container-image>
+    image: "<cman-container-image>"
+    imagePullPolicy: Always
+    replicas: 1
+  service:
+    internal:
+      enabled: true
+      ports:
+        - name: cman
+          port: 1521
+          targetPort: 1521
+    external:
+      enabled: true
+      serviceType: LoadBalancer
+      externalTrafficPolicy: Local
+      annotations:
+        oci.oraclecloud.com/load-balancer-type: "nlb"
+        oci-network-load-balancer.oraclecloud.com/internal: "true"
+        oci-network-load-balancer.oraclecloud.com/is-preserve-source: "false"
+        oci-network-load-balancer.oraclecloud.com/subnet: "<subnet-ocid>"
+      ports:
+        - name: cman
+          port: 1521
+          targetPort: 1521
   cman:
     configSource:
       configMapRef:
-        name: cman-user-config
+        name: cman-sidb-filemode-config
         key: cman.ora
+```
+
+Standalone `cman.ora` reference: [`samples/cman-sidb-filemode.cman.ora`](samples/cman-sidb-filemode.cman.ora)
+
+```ini
+CMAN_cman-sidb.default.svc.cluster.local =
+(configuration=
+  (address=(protocol=tcp)(host=cman-sidb.default.svc.cluster.local)(port=1521))
+  (parameter_list =
+    (connection_statistics=yes)
+    (log_directory=/u01/app/oracle/product/23ai/client_1/network/log)
+    (log_level=user)
+    (trace_directory=/u01/app/oracle/product/23ai/client_1/network/trace)
+    (trace_level=user)
+    (valid_node_checking_registration=on)
+    (registration_invited_nodes=*)
+  )
+  (rule_list=
+    (rule=
+       (src=*)(dst=*)(srv=*)(act=accept)
+       (action_list=(aut=off)(moct=0)(mct=0)(mit=0)(conn_stats=on))
+    )
+  )
+)
 ```
 
 When `configSource` is set, do not set `spec.cman.rules`, `logLevel`, `traceLevel`, `registrationInvitedNodes`, or `restApi`. The admission webhook rejects those combinations because the mounted file is the source of truth.
@@ -296,25 +521,75 @@ When `configSource` is set, do not set `spec.cman.rules`, `logLevel`, `traceLeve
 
 Use global `next_hop` when all accepted traffic can be forwarded to one backend listener. This avoids setting database `remote_listener`.
 
-```ini
-CMAN_cman-sidb.default.svc.cluster.local =
-(configuration=
-  (address=(protocol=tcp)(host=cman-sidb.default.svc.cluster.local)(port=1521))
-  (next_hop=
-    (description=(address=(protocol=tcp)(host=sidb-sample.default.svc.cluster.local)(port=1521)))
-  )
-  (parameter_list =
-    (connection_statistics=yes)
-    (log_level=user)
-    (trace_level=user)
-  )
-  (rule_list=
-    (rule=
-      (src=*)(dst=*)(srv=apppdb1)(act=accept)
-      (action_list=(aut=off)(moct=0)(mct=0)(mit=0)(conn_stats=on))
+Sample file: [`samples/cman-sidb-nexthop.yaml`](samples/cman-sidb-nexthop.yaml)
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cman-sidb-nexthop-config
+  namespace: default
+data:
+  cman.ora: |
+    CMAN_cman-sidb.default.svc.cluster.local =
+    (configuration=
+      (address=(protocol=tcp)(host=cman-sidb.default.svc.cluster.local)(port=1521))
+      (next_hop=
+        (description=(address=(protocol=tcp)(host=sidb-sample.default.svc.cluster.local)(port=1521)))
+      )
+      (parameter_list =
+        (connection_statistics=yes)
+        (log_directory=/u01/app/oracle/product/23ai/client_1/network/log)
+        (log_level=user)
+        (trace_directory=/u01/app/oracle/product/23ai/client_1/network/trace)
+        (trace_level=user)
+        (valid_node_checking_registration=on)
+        (registration_invited_nodes=*)
+      )
+      (rule_list=
+        (rule=
+           (src=*)(dst=*)(srv=apppdb1)(act=accept)
+           (action_list=(aut=off)(moct=0)(mct=0)(mit=0)(conn_stats=on))
+        )
+      )
     )
-  )
-)
+---
+apiVersion: network.oracle.com/v4
+kind: TrafficManager
+metadata:
+  name: cman-sidb
+  namespace: default
+spec:
+  type: cman
+  runtime:
+    image: "<cman-container-image-with-next-hop-support>"
+    imagePullPolicy: Always
+    replicas: 1
+  service:
+    internal:
+      enabled: true
+      ports:
+        - name: cman
+          port: 1521
+          targetPort: 1521
+    external:
+      enabled: true
+      serviceType: LoadBalancer
+      externalTrafficPolicy: Local
+      annotations:
+        oci.oraclecloud.com/load-balancer-type: "nlb"
+        oci-network-load-balancer.oraclecloud.com/internal: "true"
+        oci-network-load-balancer.oraclecloud.com/is-preserve-source: "false"
+        oci-network-load-balancer.oraclecloud.com/subnet: "<subnet-ocid>"
+      ports:
+        - name: cman
+          port: 1521
+          targetPort: 1521
+  cman:
+    configSource:
+      configMapRef:
+        name: cman-sidb-nexthop-config
+        key: cman.ora
 ```
 
 With this pattern, clients can connect to CMAN directly:
@@ -331,43 +606,91 @@ Use service-alias next-hop when one CMAN endpoint must route multiple requested 
 
 The CMAN image must support extracting embedded `tnsnames.ora` aliases from the mounted `cman.ora`. The alias block is stored as comments so `cman.ora` remains valid CMAN syntax, and the container writes it to `$ORACLE_HOME/network/admin/tnsnames.ora` before starting CMAN.
 
-```ini
-# CMAN_TNSNAMES_BEGIN
-# apppdb1 =
-#   (description=
-#     (address=(protocol=tcp)(host=sidb-sample.default.svc.cluster.local)(port=1521))
-#     (connect_data=(service_name=apppdb1))
-#   )
-#
-# apppdb2 =
-#   (description=
-#     (address=(protocol=tcp)(host=sidb-cman-peer.default.svc.cluster.local)(port=1521))
-#     (connect_data=(service_name=apppdb2))
-#   )
-# CMAN_TNSNAMES_END
+Sample file: [`samples/cman-sidb-peer-nexthop.yaml`](samples/cman-sidb-peer-nexthop.yaml)
 
-CMAN_cman-sidb.default.svc.cluster.local =
-(configuration=
-  (address=(protocol=tcp)(host=cman-sidb.default.svc.cluster.local)(port=1521))
-  (parameter_list =
-    (connection_statistics=yes)
-    (log_level=user)
-    (trace_level=user)
-    (valid_node_checking_registration=on)
-    (registration_invited_nodes=*)
-    (use_service_as_tnsnames_alias=on)
-  )
-  (rule_list=
-    (rule=
-      (src=*)(dst=*)(srv=apppdb1)(act=accept)
-      (action_list=(aut=off)(moct=0)(mct=0)(mit=0)(conn_stats=on))
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cman-sidb-peer-nexthop-config
+  namespace: default
+data:
+  cman.ora: |
+    # CMAN_TNSNAMES_BEGIN
+    # apppdb1 =
+    #   (description=
+    #     (address=(protocol=tcp)(host=sidb-sample.default.svc.cluster.local)(port=1521))
+    #     (connect_data=(service_name=apppdb1))
+    #   )
+    #
+    # apppdb2 =
+    #   (description=
+    #     (address=(protocol=tcp)(host=sidb-cman-peer.default.svc.cluster.local)(port=1521))
+    #     (connect_data=(service_name=apppdb2))
+    #   )
+    # CMAN_TNSNAMES_END
+
+    CMAN_cman-sidb.default.svc.cluster.local =
+    (configuration=
+      (address=(protocol=tcp)(host=cman-sidb.default.svc.cluster.local)(port=1521))
+      (parameter_list =
+        (connection_statistics=yes)
+        (log_directory=/u01/app/oracle/product/23ai/client_1/network/log)
+        (log_level=user)
+        (trace_directory=/u01/app/oracle/product/23ai/client_1/network/trace)
+        (trace_level=user)
+        (valid_node_checking_registration=on)
+        (registration_invited_nodes=*)
+        (use_service_as_tnsnames_alias=on)
+      )
+      (rule_list=
+        (rule=
+           (src=*)(dst=*)(srv=apppdb1)(act=accept)
+           (action_list=(aut=off)(moct=0)(mct=0)(mit=0)(conn_stats=on))
+        )
+        (rule=
+           (src=*)(dst=*)(srv=apppdb2)(act=accept)
+           (action_list=(aut=off)(moct=0)(mct=0)(mit=0)(conn_stats=on))
+        )
+      )
     )
-    (rule=
-      (src=*)(dst=*)(srv=apppdb2)(act=accept)
-      (action_list=(aut=off)(moct=0)(mct=0)(mit=0)(conn_stats=on))
-    )
-  )
-)
+---
+apiVersion: network.oracle.com/v4
+kind: TrafficManager
+metadata:
+  name: cman-sidb
+  namespace: default
+spec:
+  type: cman
+  runtime:
+    image: "<cman-container-image-with-embedded-tnsnames-support>"
+    imagePullPolicy: Always
+    replicas: 2
+  service:
+    internal:
+      enabled: true
+      ports:
+        - name: cman
+          port: 1521
+          targetPort: 1521
+    external:
+      enabled: true
+      serviceType: LoadBalancer
+      externalTrafficPolicy: Local
+      annotations:
+        oci.oraclecloud.com/load-balancer-type: "nlb"
+        oci-network-load-balancer.oraclecloud.com/internal: "true"
+        oci-network-load-balancer.oraclecloud.com/is-preserve-source: "false"
+        oci-network-load-balancer.oraclecloud.com/subnet: "<subnet-ocid>"
+      ports:
+        - name: cman
+          port: 1521
+          targetPort: 1521
+  cman:
+    configSource:
+      configMapRef:
+        name: cman-sidb-peer-nexthop-config
+        key: cman.ora
 ```
 
 Clients connect with Easy Connect and the requested service name selects the CMAN-side `tnsnames.ora` alias:
@@ -399,16 +722,67 @@ The following samples use a RAC database as the CMAN backend:
 - [`samples/cman-rac.yaml`](samples/cman-rac.yaml) demonstrates generated mode without next-hop. The example manually adds the CMAN internal listener to the RAC `remote_listener` parameter so RAC services register dynamically with CMAN.
 - [`samples/cman-rac-nexthop.yaml`](samples/cman-rac-nexthop.yaml) demonstrates file mode with a global `next_hop` to a RAC SCAN listener. The CMAN image must support `next_hop` in the mounted configuration.
 
-These are examples, not an exhaustive list of supported RAC or CMAN configurations.
+These are examples, not an exhaustive list of supported RAC or CMAN configurations. Create namespace `rac`, complete [RAC prerequisites](../rac/provisioning/prerequisites_oracle_rac_db.md), then apply the sample.
+
+#### RAC generated mode with `remote_listener`
+
+Sample file: [`samples/cman-rac.yaml`](samples/cman-rac.yaml)
 
 ```yaml
-# Scenario: one CMAN replica forwarding accepted RAC service traffic to a RAC
-# SCAN Service through one global next_hop.
-#
-# Use this pattern when all accepted services share the same RAC SCAN listener.
-# A global next_hop is not service-aware across different backend listeners; use
-# the alias pattern from cman-sidb-peer-nexthop.yaml when services must select
-# different database listener endpoints.
+apiVersion: network.oracle.com/v4
+kind: TrafficManager
+metadata:
+  name: cman-rac
+  namespace: rac
+spec:
+  type: cman
+  runtime:
+    image: "<cman-container-image>"
+    imagePullPolicy: Always
+    replicas: 1
+  service:
+    internal:
+      enabled: true
+      ports:
+        - name: cman
+          port: 1521
+          targetPort: 1521
+    external:
+      enabled: true
+      serviceType: LoadBalancer
+      externalTrafficPolicy: Local
+      annotations:
+        oci.oraclecloud.com/load-balancer-type: "nlb"
+        oci-network-load-balancer.oraclecloud.com/internal: "true"
+        oci-network-load-balancer.oraclecloud.com/is-preserve-source: "false"
+        oci-network-load-balancer.oraclecloud.com/subnet: "<subnet-ocid>"
+      ports:
+        - name: cman
+          port: 1521
+          targetPort: 1521
+  cman:
+    logLevel: user
+    traceLevel: user
+    registrationInvitedNodes: "*"
+    rules:
+      - host: racnode-scan.rac.svc.cluster.local
+        src: "*"
+        dst: racnode-scan.rac.svc.cluster.local
+        srv: soepdb
+        action: accept
+```
+
+Example `remote_listener` value for RAC:
+
+```sql
+alter system set remote_listener='racnode-scan:1521,cman-rac.rac.svc.cluster.local:1521' scope=both;
+```
+
+#### RAC global `next_hop` to SCAN
+
+Sample file: [`samples/cman-rac-nexthop.yaml`](samples/cman-rac-nexthop.yaml)
+
+```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -424,9 +798,11 @@ data:
           (address=(protocol=tcp)(host=racnode-scan.rac.svc.cluster.local)(port=1521))
         )
       )
-      (parameter_list=
+      (parameter_list =
         (connection_statistics=yes)
+        (log_directory=/u01/app/oracle/product/23ai/client_1/network/log)
         (log_level=user)
+        (trace_directory=/u01/app/oracle/product/23ai/client_1/network/trace)
         (trace_level=user)
         (valid_node_checking_registration=on)
         (registration_invited_nodes=*)
@@ -447,7 +823,7 @@ metadata:
 spec:
   type: cman
   runtime:
-    image: "phx.ocir.io/intsanjaysingh/db-repo/oracle/client-cman:23.26.1"
+    image: "<cman-container-image-with-next-hop-support>"
     imagePullPolicy: Always
     replicas: 1
   service:
@@ -465,7 +841,7 @@ spec:
         oci.oraclecloud.com/load-balancer-type: "nlb"
         oci-network-load-balancer.oraclecloud.com/internal: "true"
         oci-network-load-balancer.oraclecloud.com/is-preserve-source: "false"
-        oci-network-load-balancer.oraclecloud.com/subnet: "ocid1.subnet.oc1.iad.aaaaaaaaed2gazysocuzpsxkpubborao5iccxlnfloiijtmfybqf5eskibjq"
+        oci-network-load-balancer.oraclecloud.com/subnet: "<subnet-ocid>"
       ports:
         - name: cman
           port: 1521
@@ -477,9 +853,25 @@ spec:
         key: cman.ora
 ```
 
+```bash
+kubectl create namespace rac --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -f docs/trafficmanager/samples/cman-rac-nexthop.yaml
+```
+
 ### CMAN Generated Config with REST API
 
 The CMAN REST API is available only in generated config mode. It is not valid when `spec.cman.configSource` is set.
+
+Sample file: [`samples/cman-rest-api.yaml`](samples/cman-rest-api.yaml)
+
+Create the REST credential Secret, then apply the manifest:
+
+```bash
+kubectl create secret generic cman-rest-secret -n default \
+  --from-literal=RESTpwdsecret='<rest-password>' \
+  --from-literal=RESTkeysecret='<rest-private-key>'
+kubectl apply -f docs/trafficmanager/samples/cman-rest-api.yaml
+```
 
 ```yaml
 apiVersion: network.oracle.com/v4
@@ -490,17 +882,39 @@ metadata:
 spec:
   type: cman
   runtime:
-    image: <cman-container-image>
+    image: "<cman-container-image>"
+    imagePullPolicy: Always
+    replicas: 1
   service:
     internal:
       enabled: true
+      ports:
+        - name: cman
+          port: 1521
+          targetPort: 1521
     external:
       enabled: true
       serviceType: LoadBalancer
+      externalTrafficPolicy: Local
+      annotations:
+        oci.oraclecloud.com/load-balancer-type: "nlb"
+        oci-network-load-balancer.oraclecloud.com/internal: "true"
+        oci-network-load-balancer.oraclecloud.com/is-preserve-source: "false"
+        oci-network-load-balancer.oraclecloud.com/subnet: "<subnet-ocid>"
+      ports:
+        - name: cman
+          port: 1521
+          targetPort: 1521
   cman:
+    logLevel: user
+    traceLevel: user
+    registrationInvitedNodes: "*"
     rules:
-    - host: dbhost1.example.com
-      action: accept
+      - host: sidb-sample.default.svc.cluster.local
+        src: "*"
+        dst: "*"
+        srv: apppdb1
+        action: accept
     restApi:
       enabled: true
       port: 1525
@@ -608,10 +1022,12 @@ When using OCI LoadBalancer annotations, the Kubernetes cluster must have a clou
 
 ## Status and Verification
 
-```sh
+```bash
 kubectl get trafficmanager -n <namespace>
 kubectl describe trafficmanager <name> -n <namespace>
 kubectl get deploy,svc,pod -n <namespace> -l app.kubernetes.io/component=traffic-manager
+kubectl get trafficmanager <name> -n <namespace> \
+  -o jsonpath='{.status.status}{"\n"}{.status.readyReplicas}{"\n"}{.status.externalEndpoint}{"\n"}{.status.cman.configMode}{"\n"}'
 ```
 
 Useful status fields:
@@ -627,6 +1043,21 @@ Useful status fields:
 | `status.cman.configMode` | CMAN | `generated` or `file`. |
 | `status.cman.restHost` | CMAN | REST API host when enabled. |
 
+## Troubleshooting
+
+| Symptom | Likely cause | What to check |
+| --- | --- | --- |
+| `ORA-12529` from CMAN | Rule `src`, `dst`, or `srv` does not match the client descriptor | For Easy Connect or SYSDBA tests, try `dst=*` and `srv=*` unless you have verified the exact match required |
+| External Service `EXTERNAL-IP` stays `<pending>` | No cloud load-balancer controller, or invalid cloud annotations | Confirm a load-balancer controller is installed. On OCI, verify subnet OCID and NLB annotations. Use `NodePort` or an in-cluster client if no external endpoint is required |
+| `status.status` is not `Ready` | Image pull failure, invalid manifest, or CMAN startup error | Run `kubectl describe trafficmanager <name>` and `kubectl logs deploy/<name>` |
+| Generated mode cannot resolve backend pod hostname | CMAN ServiceAccount lacks Endpoint read access | Apply the [endpoint hostname mapping RBAC](#cman-endpoint-hostname-mapping) Role and RoleBinding in the database Service namespace |
+| Next-hop or alias routing fails | CMAN image does not support the selected file-mode feature | Use an image that supports `next_hop`, `use_service_as_tnsnames_alias`, or `CMAN_TNSNAMES_BEGIN` / `CMAN_TNSNAMES_END` as required by the sample |
+| REST API Secret rejected at admission | `configSource` is set, or Secret keys are missing | REST API is valid only in generated mode. Create `cman-rest-secret` with `RESTpwdsecret` and `RESTkeysecret` keys before applying [`samples/cman-rest-api.yaml`](samples/cman-rest-api.yaml) |
+| Multiple samples conflict in one namespace | Several SIDB samples reuse `metadata.name: cman-sidb` | Rename `metadata.name` and update the CMAN listener hostname in `cman.ora` before applying another sample |
+
 ## Related Documentation
 
-- [SIDB documentation](../sidb/README.md) — required only when CMAN routes to SIDB resources.
+- [Operator installation and prerequisites](../../README.md#prerequisites)
+- [SIDB documentation](../sidb/README.md) and [SIDB prerequisites](../sidb/PREREQUISITES.md) — required when CMAN routes to SIDB resources
+- [RAC documentation](../rac/README.md) and [RAC prerequisites](../rac/provisioning/prerequisites_oracle_rac_db.md) — required for RAC-focused samples
+- [Canonical TrafficManager template](../../config/samples/trafficmanager/trafficmanager.yaml)
