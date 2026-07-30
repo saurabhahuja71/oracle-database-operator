@@ -384,7 +384,10 @@ func TestUpdateDeploySetForPrivateAI_NoOpDoesNotUpdateDeployment(t *testing.T) {
 		},
 	}
 	deploy := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{Name: "pai-sample", Namespace: "pai"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "pai-sample", Namespace: "pai",
+			Annotations: map[string]string{deploymentRevisionAnnotationKey: "1"},
+		},
 		Spec: appsv1.DeploymentSpec{
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
