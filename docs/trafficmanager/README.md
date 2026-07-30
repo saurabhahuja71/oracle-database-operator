@@ -30,6 +30,15 @@ kubectl get trm -n <namespace>          # same resource
 - [Quick Start: Deploy CMAN TrafficManager](#quick-start-deploy-cman-trafficmanager)
 - [What the Operator Creates](#what-the-operator-creates)
 - [Choosing a CMAN Configuration Pattern](#choosing-a-cman-configuration-pattern)
+  - Single SIDB — generated rules
+  - Two or more SIDBs — generated rules (`dst=*`)
+  - Two or more SIDBs — generated rules (explicit `dst`)
+  - Single SIDB — global `next_hop`
+  - Single SIDB — user-managed `cman.ora`
+  - Two or more SIDBs — service-alias `next_hop`
+  - Two or more SIDBs — user-managed `cman.ora` (template)
+  - Single RAC — generated rules
+  - Single RAC — global `next_hop` to SCAN
 - [Sample Manifests](#sample-manifests)
 - [CMAN Mode](#cman-mode)
 - [Field Reference](#field-reference)
@@ -666,7 +675,7 @@ spec:
 
 Standalone `cman.ora` reference: [`samples/cman-sidb-filemode.cman.ora`](samples/cman-sidb-filemode.cman.ora)
 
-```ini
+```text
 CMAN_cman-sidb.default.svc.cluster.local =
 (configuration=
   (address=(protocol=tcp)(host=cman-sidb.default.svc.cluster.local)(port=1521))
