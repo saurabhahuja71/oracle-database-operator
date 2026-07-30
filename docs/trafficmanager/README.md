@@ -209,7 +209,6 @@ For every `TrafficManager`, the controller manages:
 | ConfigMap | Only when `spec.cman.configSource` references an operator-managed source; file-mode ConfigMaps are typically user-created |
 | Internal Service | Listener on port 1521 (default) |
 | External Service | Optional `LoadBalancer` or other type |
-| REST port Service | Additional `rest` port when `spec.cman.restApi.enabled=true` |
 
 ## Choosing a CMAN Configuration Pattern
 
@@ -220,7 +219,7 @@ flowchart TD
     B -->|You supply complete file| D[File config<br/>spec.cman.configSource]
     C --> E{Database registers<br/>via remote_listener?}
     E -->|Yes| F[Generated rules + endpoint hostname mapping]
-    E -->|No / optional REST API| G[Generated rules only]
+    E -->|No| G[Use file-mode next_hop instead]
     D --> H{How many backend Services?}
     H -->|One| I[Global next_hop in cman.ora]
     H -->|Multiple service names| J[Service-alias next-hop<br/>use_service_as_tnsnames_alias + embedded tnsnames]
@@ -238,7 +237,6 @@ flowchart TD
 | **Two or more SIDBs — user-managed `cman.ora` (template)** | File `spec.cman.configSource` | 2+ | **Not required** for alias/next-hop patterns | `@//<cman-ip>:1521/<alias>` per backend | Full multi-backend file-mode template with embedded aliases, rules, and optional `next_hop` comments | [`config/samples/trafficmanager/cman-sidb-peer-filemode.yaml`](../../config/samples/trafficmanager/cman-sidb-peer-filemode.yaml) |
 | **Single RAC — generated rules** | Generated `spec.cman.rules[]` | 1 RAC | **Required** (add CMAN listener to RAC `remote_listener`) | `@//<cman-ip>:1521/<rac-service>` | RAC services register dynamically with CMAN | [`cman-rac.yaml`](samples/cman-rac.yaml) |
 | **Single RAC — global `next_hop` to SCAN** | File `spec.cman.configSource` | 1 RAC SCAN | **Not required** | `@//<cman-ip>:1521/<service-name>` | RAC does not register with CMAN; CMAN forwards to RAC SCAN | [`cman-rac-nexthop.yaml`](samples/cman-rac-nexthop.yaml) |
-| **CMAN REST API** | Generated `spec.cman.rules[]` + `restApi` | 1+ | Same as generated rules | REST clients use the `rest` Service port | Programmatic CMAN administration in generated mode | [`cman-rest-api.yaml`](samples/cman-rest-api.yaml) |
 
 **Deploy order summary**
 
@@ -275,7 +273,6 @@ The focused examples under [`samples/`](samples/) use SIDB Services for concrete
 | [`cman-sidb-peer-filemode.yaml`](../../config/samples/trafficmanager/cman-sidb-peer-filemode.yaml) | 2 | 2+ | Canonical multi-backend file-mode template with embedded aliases and rules |
 | [`cman-rac.yaml`](samples/cman-rac.yaml) | 1 | 1 RAC database | Generated mode with manual RAC service registration through `remote_listener` |
 | [`cman-rac-nexthop.yaml`](samples/cman-rac-nexthop.yaml) | 1 | 1 RAC SCAN | Global `next_hop` to a RAC SCAN Service for the accepted PDB service |
-| [`cman-rest-api.yaml`](samples/cman-rest-api.yaml) | 1 | 1 | Generated mode with CMAN REST API enabled |
 | [`cman-sidb-filemode.cman.ora`](samples/cman-sidb-filemode.cman.ora) | N/A | User-defined | Standalone `cman.ora` reference |
 
 Use [`cman-sidb-peer-nexthop.yaml`](samples/cman-sidb-peer-nexthop.yaml) as the focused SIDB reference for multiple CMAN replicas, multiple database backends, and per-service next-hop routing. A global `next_hop` is not service-aware; the sample uses `use_service_as_tnsnames_alias=on` and one `tnsnames.ora` alias per database/service pair instead of declaring multiple global `next_hop` blocks.
@@ -691,7 +688,7 @@ CMAN_cman-sidb.default.svc.cluster.local =
 )
 ```
 
-When `configSource` is set, do not set `spec.cman.rules`, `logLevel`, `traceLevel`, `registrationInvitedNodes`, or `restApi`. The admission webhook rejects those combinations because the mounted file is the source of truth.
+When `configSource` is set, do not set `spec.cman.rules`, `logLevel`, `traceLevel`, or `registrationInvitedNodes`. The admission webhook rejects those combinations because the mounted file is the source of truth.
 
 #### Two or more SIDBs — user-managed `cman.ora`
 
@@ -1047,76 +1044,6 @@ kubectl create namespace rac --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f docs/trafficmanager/samples/cman-rac-nexthop.yaml
 ```
 
-### CMAN Generated Config with REST API
-
-The CMAN REST API is available only in generated config mode. It is not valid when `spec.cman.configSource` is set.
-
-Sample file: [`samples/cman-rest-api.yaml`](samples/cman-rest-api.yaml)
-
-Create the REST credential Secret, then apply the manifest:
-
-```bash
-kubectl create secret generic cman-rest-secret -n default \
-  --from-literal=RESTpwdsecret='<rest-password>' \
-  --from-literal=RESTkeysecret='<rest-private-key>'
-kubectl apply -f docs/trafficmanager/samples/cman-rest-api.yaml
-```
-
-```yaml
-apiVersion: network.oracle.com/v4
-kind: TrafficManager
-metadata:
-  name: cman-tm-rest
-  namespace: default
-spec:
-  type: cman
-  runtime:
-    image: "<cman-container-image>"
-    imagePullPolicy: Always
-    replicas: 1
-  service:
-    internal:
-      enabled: true
-      ports:
-        - name: cman
-          port: 1521
-          targetPort: 1521
-    external:
-      enabled: true
-      serviceType: LoadBalancer
-      externalTrafficPolicy: Local
-      annotations:
-        oci.oraclecloud.com/load-balancer-type: "nlb"
-        oci-network-load-balancer.oraclecloud.com/internal: "true"
-        oci-network-load-balancer.oraclecloud.com/is-preserve-source: "false"
-        oci-network-load-balancer.oraclecloud.com/subnet: "<subnet-ocid>"
-      ports:
-        - name: cman
-          port: 1521
-          targetPort: 1521
-  cman:
-    logLevel: user
-    traceLevel: user
-    registrationInvitedNodes: "*"
-    rules:
-      - host: sidb-sample.default.svc.cluster.local
-        src: "*"
-        dst: "*"
-        srv: apppdb1
-        action: accept
-    restApi:
-      enabled: true
-      port: 1525
-      passwordSecretRef:
-        name: cman-rest-secret
-        key: RESTpwdsecret
-      privateKeySecretRef:
-        name: cman-rest-secret
-        key: RESTkeysecret
-```
-
-When REST API is enabled, the controller exposes an additional `rest` Service port. If `spec.cman.restApi.port` is omitted, it defaults to `1525`.
-
 ### Test CMAN Database Connectivity
 
 After the external Service receives an address, use the short Easy Connect form whenever `remote_listener` registration or next-hop routing is handling the backend selection:
@@ -1201,11 +1128,6 @@ When using OCI LoadBalancer annotations, the Kubernetes cluster must have a clou
 | `spec.cman.rules[].dst` | CMAN generated | No | None | Optional destination match. |
 | `spec.cman.rules[].srv` | CMAN generated | No | None | Optional service match. |
 | `spec.cman.rules[].action` | CMAN generated | No | None | `accept`, `reject`, or `drop`. |
-| `spec.cman.restApi.enabled` | CMAN generated | No | `false` | Enables CMAN REST API. Not valid with file config. |
-| `spec.cman.restApi.host` | CMAN generated | No | Internal Service DNS | REST API host. |
-| `spec.cman.restApi.port` | CMAN generated | No | `1525` | REST API port. |
-| `spec.cman.restApi.passwordSecretRef` | CMAN REST | Required when REST enabled | None | Secret key reference for REST password. |
-| `spec.cman.restApi.privateKeySecretRef` | CMAN REST | Required when REST enabled | None | Secret key reference for REST private key. |
 | `spec.cman.configSource.configMapRef.name` | CMAN file | Required for file config | None | ConfigMap containing the `cman.ora` key. TrafficManager mounts only the selected key, not every key in the ConfigMap. |
 | `spec.cman.configSource.configMapRef.key` | CMAN file | Required for file config | None | ConfigMap key mounted as the user CMAN file. Use embedded alias markers if the CMAN image must also create `tnsnames.ora`. |
 
@@ -1230,7 +1152,6 @@ Useful status fields:
 | `status.externalService` | CMAN | External Service name when enabled. |
 | `status.externalEndpoint` | CMAN | Load balancer endpoint when reported by Kubernetes. |
 | `status.cman.configMode` | CMAN | `generated` or `file`. |
-| `status.cman.restHost` | CMAN | REST API host when enabled. |
 
 ## Troubleshooting
 
@@ -1243,7 +1164,6 @@ Useful status fields:
 | `status.status` is not `Ready` | Image pull failure, invalid manifest, or CMAN startup error | Run `kubectl describe trafficmanager <name>` and `kubectl logs deploy/<name>` |
 | Generated mode cannot resolve backend pod hostname | CMAN ServiceAccount lacks Endpoint read access | Apply the [endpoint hostname mapping RBAC](#cman-endpoint-hostname-mapping) Role and RoleBinding in the database Service namespace |
 | Next-hop or alias routing fails | CMAN image does not support the selected file-mode feature | Use an image that supports `next_hop`, `use_service_as_tnsnames_alias`, or `CMAN_TNSNAMES_BEGIN` / `CMAN_TNSNAMES_END` as required by the sample |
-| REST API Secret rejected at admission | `configSource` is set, or Secret keys are missing | REST API is valid only in generated mode. Create `cman-rest-secret` with `RESTpwdsecret` and `RESTkeysecret` keys before applying [`samples/cman-rest-api.yaml`](samples/cman-rest-api.yaml) |
 | Multiple samples conflict in one namespace | Several SIDB samples reuse `metadata.name: cman-sidb` | Rename `metadata.name` and update the CMAN listener hostname in `cman.ora` before applying another sample |
 
 ## Related Documentation
