@@ -1,4 +1,10 @@
 ######################################################################
+# Also see: docs/trafficmanager/samples/README.md
+# Pattern guide: docs/trafficmanager/README.md#choosing-a-cman-configuration-pattern
+# Canonical templates: config/samples/trafficmanager/
+######################################################################
+
+######################################################################
 # CMAN file-mode example. File mode copies this file as-is.
 ######################################################################
 

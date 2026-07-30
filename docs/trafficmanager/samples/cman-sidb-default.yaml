@@ -3,6 +3,14 @@
 # Unlike cman-sidb-peer.yaml, each rule restricts dst to the corresponding SIDB
 # Kubernetes Service instead of accepting dst="*". Use this generated-rule
 # pattern when destination filtering must be explicit.
+# Also see:
+#   Pattern guide: docs/trafficmanager/README.md#choosing-a-cman-configuration-pattern
+#   Sample index:  docs/trafficmanager/samples/README.md
+#   Canonical multi-backend file-mode template:
+#     config/samples/trafficmanager/cman-sidb-peer-filemode.yaml
+#   Canonical single-backend file-mode template:
+#     config/samples/trafficmanager/cman-sidb-filemode.yaml
+#
 apiVersion: network.oracle.com/v4
 kind: TrafficManager
 metadata:

@@ -9,6 +9,11 @@
 # the CMAN listener host, namespace, image paths, and rules aligned with your
 # environment.
 #
+#
+# Sample index: docs/trafficmanager/samples/README.md
+# Pattern guide: docs/trafficmanager/README.md#choosing-a-cman-configuration-pattern
+# Focused examples: docs/trafficmanager/samples/
+#
 apiVersion: v1
 kind: ConfigMap
 metadata:

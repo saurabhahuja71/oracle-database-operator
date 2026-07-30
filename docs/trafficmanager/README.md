@@ -1,6 +1,8 @@
-# Traffic Manager (Preview Mode in DB Operator 2.2.0 Release)
+# Oracle Traffic Manager (CMAN) for Kubernetes — Oracle Database Operator
 
-`TrafficManager` is a `network.oracle.com/v4` custom resource that provisions a managed Oracle Connection Manager (CMAN) endpoint for Oracle Database listener traffic in Kubernetes.
+Deploy **Oracle Connection Manager (CMAN)** on Kubernetes with the Oracle Database Operator **TrafficManager** custom resource (`network.oracle.com/v4`). This guide explains how to route SQL\*Net / Easy Connect client traffic through CMAN to **SIDB**, **RAC**, Oracle Restart, or external Oracle Database listeners using generated CMAN rules or file-mode `cman.ora` (including global `next_hop` and service-alias routing).
+
+**Release note:** TrafficManager CMAN mode is **preview** in Oracle Database Operator **2.2.0**.
 
 Use this document when you want to:
 
@@ -8,6 +10,7 @@ Use this document when you want to:
 - Route client connections to SIDB, RAC, or external Oracle Database listeners through CMAN
 - Choose between generated CMAN rules and file-mode `cman.ora` configuration
 - Configure global `next_hop` or service-alias next-hop routing
+- Find focused YAML samples and canonical templates (not one mega “uncomment all cases” file)
 - Verify CMAN status and test database connectivity
 
 | Mode | `spec.type` | Purpose |
@@ -16,7 +19,9 @@ Use this document when you want to:
 
 Use **CMAN** when clients connect to Oracle Database listener traffic through Oracle Connection Manager.
 
-**Short names:** `trm`, `cman`, `connectionmanager`
+**Short names:** `trm`, `cman`, `connectionmanager`  
+**API:** `TrafficManager` · `network.oracle.com/v4`  
+**Sample index:** [docs/trafficmanager/samples/README.md](samples/README.md)
 
 ```bash
 kubectl get trafficmanager -n <namespace>
@@ -40,6 +45,7 @@ kubectl get trm -n <namespace>          # same resource
   - [Single RAC — generated rules](#choosing-a-cman-configuration-pattern)
   - [Single RAC — global `next_hop` to SCAN](#choosing-a-cman-configuration-pattern)
 - [Sample Manifests](#sample-manifests)
+  - [CMAN sample index](samples/README.md)
 - [CMAN Mode](#cman-mode)
 - [Field Reference](#field-reference)
 - [Status and Verification](#status-and-verification)
@@ -59,10 +65,11 @@ Before applying a CMAN resource:
 - prepare registry access and image pull secrets for the selected CMAN image
 - configure a Kubernetes or cloud load-balancer controller when exposing CMAN externally
 
-Use the canonical templates for the complete configuration surface, or a focused example for one routing pattern:
+Use the **sample index** and canonical templates (separate files per pattern; no master uncomment YAML):
 
+- **Sample index (use case → file):** [`docs/trafficmanager/samples/README.md`](samples/README.md)
 - Single-backend file-mode template: [`config/samples/trafficmanager/cman-sidb-filemode.yaml`](../../config/samples/trafficmanager/cman-sidb-filemode.yaml)
-- Multi-backend file-mode template: [`config/samples/trafficmanager/cman-sidb-peer-filemode.yaml`](../../config/samples/trafficmanager/cman-sidb-peer-filemode.yaml)
+- Multi-backend file-mode template (richest comments): [`config/samples/trafficmanager/cman-sidb-peer-filemode.yaml`](../../config/samples/trafficmanager/cman-sidb-peer-filemode.yaml)
 - Focused CMAN examples: [`docs/trafficmanager/samples/`](samples/)
 
 ## Prerequisites
@@ -342,6 +349,10 @@ flowchart TD
 | RAC generated rules | Yes — RAC in namespace `rac` | Yes | Update RAC `remote_listener` + `ALTER SYSTEM REGISTER` on each instance |
 
 ## Sample Manifests
+
+**Start here:** [CMAN sample index — use case to YAML map](samples/README.md).
+
+Industry-style layout: **one focused sample per use case**, plus two **canonical commented templates**. Prefer the index over a single “uncomment this section” master file (mutually exclusive modes break easily).
 
 Start with the canonical, fully commented templates:
 
@@ -1262,8 +1273,13 @@ Useful status fields:
 
 ## Related Documentation
 
+- [CMAN sample index (use case → YAML)](samples/README.md)
 - [Operator installation and prerequisites](../../README.md#prerequisites)
 - [SIDB documentation](../sidb/README.md) and [SIDB prerequisites](../sidb/PREREQUISITES.md) — required when CMAN routes to SIDB resources
 - [RAC documentation](../rac/README.md) and [RAC prerequisites](../rac/provisioning/prerequisites_oracle_rac_db.md) — required for RAC-focused samples
 - [Canonical single-backend file-mode sample](../../config/samples/trafficmanager/cman-sidb-filemode.yaml)
 - [Canonical multi-backend file-mode sample](../../config/samples/trafficmanager/cman-sidb-peer-filemode.yaml)
+
+## Search terms
+
+Oracle Traffic Manager, Oracle Connection Manager, CMAN Kubernetes, TrafficManager CRD, `network.oracle.com/v4`, Oracle Database Operator CMAN, SIDB CMAN, RAC CMAN SCAN, `cman.ora` next_hop, service-alias tnsnames, remote_listener CMAN, SQL\*Net proxy Kubernetes.

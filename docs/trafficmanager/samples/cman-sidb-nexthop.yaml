@@ -4,6 +4,14 @@
 # service-aware: use cman-sidb-peer-nexthop.yaml when different requested
 # service names must select different SIDB backends. The CMAN image must support
 # next_hop in the mounted cman.ora file.
+# Also see:
+#   Pattern guide: docs/trafficmanager/README.md#choosing-a-cman-configuration-pattern
+#   Sample index:  docs/trafficmanager/samples/README.md
+#   Canonical multi-backend file-mode template:
+#     config/samples/trafficmanager/cman-sidb-peer-filemode.yaml
+#   Canonical single-backend file-mode template:
+#     config/samples/trafficmanager/cman-sidb-filemode.yaml
+#
 apiVersion: v1
 kind: ConfigMap
 metadata:

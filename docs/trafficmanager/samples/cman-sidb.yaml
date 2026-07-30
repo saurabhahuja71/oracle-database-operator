@@ -3,6 +3,14 @@
 # The backend Kubernetes Service is sidb-sample and the accepted database
 # service is apppdb1. Replace the image, subnet OCID, namespace, backend Service,
 # and database service name for your environment.
+# Also see:
+#   Pattern guide: docs/trafficmanager/README.md#choosing-a-cman-configuration-pattern
+#   Sample index:  docs/trafficmanager/samples/README.md
+#   Canonical multi-backend file-mode template:
+#     config/samples/trafficmanager/cman-sidb-peer-filemode.yaml
+#   Canonical single-backend file-mode template:
+#     config/samples/trafficmanager/cman-sidb-filemode.yaml
+#
 apiVersion: network.oracle.com/v4
 kind: TrafficManager
 metadata:
