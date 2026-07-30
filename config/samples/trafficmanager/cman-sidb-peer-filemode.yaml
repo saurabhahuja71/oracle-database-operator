@@ -2,7 +2,7 @@
 # Copyright (c) 2026, Oracle and/or its affiliates.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
-# Canonical Oracle Connection Manager (CMAN) TrafficManager template.
+# Canonical multi-backend CMAN file-mode sample: cman-sidb-peer-filemode.yaml
 #
 # The active example demonstrates the most complete topology:
 #   - two CMAN replicas for availability; replica count scales independently

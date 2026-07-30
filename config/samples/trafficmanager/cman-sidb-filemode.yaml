@@ -1,7 +1,14 @@
-# Scenario: one CMAN replica using a complete, user-managed cman.ora file.
 #
-# Focused SIDB example. Canonical copy:
-#   config/samples/trafficmanager/cman-sidb-filemode.yaml
+# Copyright (c) 2026, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+# Canonical single-backend CMAN file-mode sample: cman-sidb-filemode.yaml
+#
+# Use file mode when you need CMAN settings that are not represented by
+# spec.cman.rules. TrafficManager mounts the selected ConfigMap key as-is; keep
+# the CMAN listener host, namespace, image paths, and rules aligned with your
+# environment.
+#
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -12,7 +19,7 @@ data:
     ######################################################################
     # CMAN file-mode example. File mode copies this file as-is.
     ######################################################################
-    
+
     CMAN_cman-sidb.default.svc.cluster.local =
     (configuration=
       (address=(protocol=tcp)(host=cman-sidb.default.svc.cluster.local)(port=1521))
