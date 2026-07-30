@@ -1,6 +1,4 @@
-# Oracle Database Operator for Kubernetes: Traffic Manager and Oracle Connection Manager (CMAN)
-
-> **Preview mode:** Traffic Manager is available in preview in Oracle Database Operator 2.2.0.
+# Traffic Manager (Preview Mode in DB Operator 2.2.0 Release)
 
 `TrafficManager` is a `network.oracle.com/v4` custom resource that provisions a managed Oracle Connection Manager (CMAN) endpoint for Oracle Database listener traffic in Kubernetes.
 
@@ -47,6 +45,7 @@ Before applying a CMAN resource:
 
 - complete the [operator installation prerequisites](../../README.md#prerequisites)
 - complete the prerequisites for the database type that CMAN will serve
+- **deploy every backend database and confirm its listener Service is reachable before applying CMAN** (see [Multiple database backends](#multiple-database-backends))
 - ensure the CMAN pod can resolve and reach every backend listener
 - prepare registry access and image pull secrets for the selected CMAN image
 - configure a Kubernetes or cloud load-balancer controller when exposing CMAN externally
@@ -63,6 +62,38 @@ Use the canonical template for the complete configuration surface, or a focused 
   - **CMAN:** a CMAN container image compatible with your chosen configuration pattern. File-mode patterns that use `next_hop`, embedded `tnsnames.ora` aliases, or `use_service_as_tnsnames_alias` require image support for those features.
 - For external `LoadBalancer` Services on OCI, a cloud load-balancer controller (for example the OCI Cloud Controller Manager) must be installed. TrafficManager writes Service annotations; the cloud controller provisions the load balancer.
 
+### Multiple database backends
+
+CMAN does **not** create database backends. For samples that route to more than one database, **deploy and verify every backend database first**, then apply the CMAN manifest that references those Services.
+
+| Sample | Backends referenced | Deploy before CMAN |
+| --- | --- | --- |
+| [`cman-sidb.yaml`](samples/cman-sidb.yaml) | 1 × `sidb-sample` | One SIDB with PDB service `apppdb1` |
+| [`cman-sidb-nexthop.yaml`](samples/cman-sidb-nexthop.yaml) | 1 × `sidb-sample` | One SIDB with service `apppdb1` |
+| [`cman-sidb-peer.yaml`](samples/cman-sidb-peer.yaml) | `sidb-sample`, `sidb-cman-peer` | **Two SIDBs** with services `apppdb1` and `apppdb2` |
+| [`cman-sidb-default.yaml`](samples/cman-sidb-default.yaml) | `sidb-sample`, `sidb-cman-peer` | **Two SIDBs** with services `apppdb1` and `apppdb2` |
+| [`cman-sidb-peer-nexthop.yaml`](samples/cman-sidb-peer-nexthop.yaml) | `sidb-sample`, `sidb-cman-peer` | **Two SIDBs** with services `apppdb1` and `apppdb2` |
+| [`cman-rac.yaml`](samples/cman-rac.yaml) | 1 × RAC SCAN | RAC database in namespace `rac` |
+| [`cman-rac-nexthop.yaml`](samples/cman-rac-nexthop.yaml) | 1 × RAC SCAN | RAC database in namespace `rac` |
+
+Recommended order for multi-backend samples:
+
+1. Deploy each backend database (for SIDB examples, see [SIDB prerequisites](../sidb/PREREQUISITES.md) and [SIDB Quick Start](../sidb/README.md#quick-start-deploy-oracle-database-on-kubernetes)).
+2. Wait until each database is **Healthy** and its Kubernetes Service exists (for example `sidb-sample`, `sidb-cman-peer`).
+3. Confirm each PDB or database service name matches the CMAN rule or `cman.ora` alias (`apppdb1`, `apppdb2`, and so on).
+4. Apply the CMAN TrafficManager manifest.
+5. For **generated-rules** samples only: set `remote_listener` and run `ALTER SYSTEM REGISTER` on **each** backend database after CMAN is Healthy.
+6. Verify each service on CMAN (`cmctl show services`) before client testing.
+
+Example check before applying [`cman-sidb-peer.yaml`](samples/cman-sidb-peer.yaml):
+
+```bash
+kubectl get singleinstancedatabase -n default
+kubectl get svc -n default sidb-sample sidb-cman-peer
+```
+
+Both databases must exist and be reachable. If `sidb-cman-peer` is missing, CMAN will start but routing to that backend fails.
+
 ## Quick Start: Deploy CMAN TrafficManager
 
 This is the fastest path for a new CMAN endpoint using global `next_hop` file mode. It does not require setting database `remote_listener`.
@@ -76,7 +107,7 @@ If you are running commands from the repository root:
 
 ```bash
 kubectl apply -f docs/trafficmanager/samples/cman-sidb-nexthop.yaml
-kubectl wait --for=condition=Ready trafficmanager/cman-sidb -n default --timeout=300s
+kubectl wait --for=jsonpath='{.status.status}'=Healthy trafficmanager/cman-sidb -n default --timeout=300s
 kubectl get trafficmanager cman-sidb -n default \
   -o jsonpath='{.status.status}{"\n"}{.status.externalEndpoint}{"\n"}'
 ```
@@ -94,7 +125,74 @@ Test connectivity after the external endpoint is available:
 sqlplus 'sys/<password>@//<cman-external-ip>:1521/apppdb1 as sysdba'
 ```
 
-For generated rules with `remote_listener` registration, start with [`samples/cman-sidb.yaml`](samples/cman-sidb.yaml) instead. For multiple backends or CMAN replicas, see [Choosing a CMAN Configuration Pattern](#choosing-a-cman-configuration-pattern).
+### Quick Start: generated rules (`cman-sidb.yaml`)
+
+Use generated rules only when the database will register its services with CMAN. **Deploy CMAN first, then configure the database.** `remote_listener` cannot be set until the CMAN internal Service exists and resolves from the database pod. **Do not test Easy Connect through CMAN until registration is complete.** Without that step, CMAN starts successfully but clients fail with `ORA-12514` because the requested service name is not on the CMAN listener.
+
+Sample file: [`samples/cman-sidb.yaml`](samples/cman-sidb.yaml)
+
+1. Apply the TrafficManager manifest and wait until CMAN is **Healthy**.
+2. Retrieve the CMAN external endpoint.
+3. Set `remote_listener` on each backend database to the CMAN **internal** Service DNS name (only after step 1).
+4. Run `ALTER SYSTEM REGISTER` on each database instance.
+5. Verify the PDB service appears on the CMAN listener.
+6. Test Easy Connect through the CMAN external endpoint.
+
+**Step 1 — deploy CMAN and wait:**
+
+```bash
+kubectl apply -f docs/trafficmanager/samples/cman-sidb.yaml
+kubectl wait --for=jsonpath='{.status.status}'=Healthy trafficmanager/cman-sidb -n default --timeout=300s
+kubectl get trafficmanager cman-sidb -n default \
+  -o jsonpath='{.status.status}{"\n"}{.status.externalEndpoint}{"\n"}'
+```
+
+**Step 2 — confirm CMAN resolves from the database pod** (required before setting `remote_listener`):
+
+```bash
+kubectl exec -n default <sidb-pod-name> -- getent hosts cman-sidb.default.svc.cluster.local
+```
+
+**Step 3 and 4 — register the database with CMAN:**
+
+```bash
+kubectl exec -it -n default <sidb-pod-name> -- sqlplus / as sysdba
+```
+
+```sql
+ALTER SYSTEM SET remote_listener='(ADDRESS=(PROTOCOL=TCP)(HOST=cman-sidb.default.svc.cluster.local)(PORT=1521))' SCOPE=BOTH;
+ALTER SYSTEM REGISTER;
+```
+
+If your database accepts the short form, this equivalent setting may also work:
+
+```sql
+ALTER SYSTEM SET remote_listener='cman-sidb.default.svc.cluster.local:1521' SCOPE=BOTH;
+ALTER SYSTEM REGISTER;
+```
+
+If `ALTER SYSTEM` fails with `ORA-00132` or `ORA-00141`, CMAN is not deployed yet or the hostname does not resolve from the database pod. Deploy CMAN first, confirm step 2, then use the `ADDRESS` form above.
+
+**Step 5 — verify the service is on CMAN** (look for your PDB service name, for example `apppdb1`):
+
+```bash
+kubectl exec -n default deploy/cman-sidb -- cmctl show services
+```
+
+**Step 6 — connect through CMAN:**
+
+```bash
+sqlplus 'sys/<password>@//<cman-external-ip>:1521/apppdb1 as sysdba'
+```
+
+| Pattern | Backends | `remote_listener` before client connect? | Sample |
+| --- | ---: | --- | --- |
+| Single SIDB — global `next_hop` (Quick Start above) | 1 | No | [`cman-sidb-nexthop.yaml`](samples/cman-sidb-nexthop.yaml) |
+| Single SIDB — generated rules | 1 | **Yes** | [`cman-sidb.yaml`](samples/cman-sidb.yaml) |
+| Two or more SIDBs — generated rules | 2+ | **Yes, on each database** | [`cman-sidb-peer.yaml`](samples/cman-sidb-peer.yaml) |
+| Two or more SIDBs — service-alias next-hop | 2+ | No | [`cman-sidb-peer-nexthop.yaml`](samples/cman-sidb-peer-nexthop.yaml) |
+
+For multiple backends or CMAN replicas, see [Choosing a CMAN Configuration Pattern](#choosing-a-cman-configuration-pattern).
 
 **Important:** Most SIDB-focused samples use `metadata.name: cman-sidb`. Apply only one sample per namespace, or rename `metadata.name` and the CMAN listener hostname in `cman.ora` before applying another sample.
 
@@ -126,14 +224,25 @@ flowchart TD
     H -->|Custom topology| K[Plain file-mode cman.ora]
 ```
 
-| Pattern | TrafficManager mode | Database `remote_listener` | Client connect string | Use when | Sample |
-| --- | --- | --- | --- | --- | --- |
-| Generated CMAN rules | Generated config with `spec.cman.rules[]` | Usually set to the CMAN internal or external listener address so the database registers through CMAN | Easy Connect to CMAN, or source-route descriptor when needed | The operator manifest should own simple CMAN filtering rules. | [`samples/cman-sidb.yaml`](samples/cman-sidb.yaml), [`samples/cman-sidb-peer.yaml`](samples/cman-sidb-peer.yaml), [`samples/cman-sidb-default.yaml`](samples/cman-sidb-default.yaml) |
-| Generated CMAN rules with explicit `dst` | Generated config with `spec.cman.rules[]` and explicit destination hostnames | Usually set to the CMAN internal or external listener address | Easy Connect to CMAN, or source-route descriptor when needed | Destination filtering must match the backend Service hostname instead of `dst=*`. | [`samples/cman-sidb-default.yaml`](samples/cman-sidb-default.yaml) |
-| File-mode `cman.ora` | File config with `spec.cman.configSource.configMapRef` | Depends on the supplied file | Whatever the supplied `cman.ora` supports | You already have a complete CMAN configuration file. | [`samples/cman-sidb-filemode.yaml`](samples/cman-sidb-filemode.yaml) |
-| Global `next_hop` | File config with `next_hop` in `cman.ora` | Not required | Easy Connect to CMAN using the backend service name | One CMAN endpoint forwards to one backend listener or one backend service set. | [`samples/cman-sidb-nexthop.yaml`](samples/cman-sidb-nexthop.yaml) |
-| Service-alias next-hop | File config with `use_service_as_tnsnames_alias=on` and CMAN-side `tnsnames.ora` aliases | Not required | Easy Connect to CMAN using aliases such as `apppdb1` and `apppdb2` | One CMAN endpoint must route different requested service names to different backend Services. | [`samples/cman-sidb-peer-nexthop.yaml`](samples/cman-sidb-peer-nexthop.yaml) |
-| CMAN REST API | Generated config with `spec.cman.restApi.enabled=true` | Same as generated rules | REST clients use the exposed `rest` Service port | You need programmatic CMAN administration in generated mode. | [`samples/cman-rest-api.yaml`](samples/cman-rest-api.yaml) |
+| Pattern | TrafficManager mode | Database backends | Database `remote_listener` | Client connect string | Use when | Sample |
+| --- | --- | ---: | --- | --- | --- | --- |
+| **Single SIDB — generated rules** | Generated `spec.cman.rules[]` | 1 | **Required** on the database **after** CMAN is Healthy | `@//<cman-ip>:1521/<service-name>` | One SIDB registers with CMAN; operator owns filtering rules | [`cman-sidb.yaml`](samples/cman-sidb.yaml) |
+| **Two or more SIDBs — generated rules (`dst=*`)** | Generated `spec.cman.rules[]` | 2+ | **Required on each database** after CMAN is Healthy | `@//<cman-ip>:1521/<service-name>` per backend | Multiple SIDBs each register a different service name with CMAN | [`cman-sidb-peer.yaml`](samples/cman-sidb-peer.yaml) |
+| **Two or more SIDBs — generated rules (explicit `dst`)** | Generated `spec.cman.rules[]` | 2+ | **Required on each database** after CMAN is Healthy | `@//<cman-ip>:1521/<service-name>` | Same as peer sample, but each rule uses an explicit backend Service hostname in `dst` | [`cman-sidb-default.yaml`](samples/cman-sidb-default.yaml) |
+| **Single SIDB — global `next_hop`** | File `spec.cman.configSource` | 1 | **Not required** | `@//<cman-ip>:1521/<service-name>` | One backend; CMAN forwards all accepted traffic to one SIDB listener | [`cman-sidb-nexthop.yaml`](samples/cman-sidb-nexthop.yaml) |
+| **Two or more SIDBs — service-alias `next_hop`** | File `spec.cman.configSource` | 2+ | **Not required** | `@//<cman-ip>:1521/apppdb1`, `@//<cman-ip>:1521/apppdb2`, … | Multiple backends; each requested service name selects a different SIDB through embedded `tnsnames.ora` aliases | [`cman-sidb-peer-nexthop.yaml`](samples/cman-sidb-peer-nexthop.yaml) |
+| **User-managed `cman.ora`** | File `spec.cman.configSource` | User-defined | Depends on the file | Depends on the file | You supply a complete CMAN configuration | [`cman-sidb-filemode.yaml`](samples/cman-sidb-filemode.yaml) |
+| **Single RAC — generated rules** | Generated `spec.cman.rules[]` | 1 RAC | **Required** (add CMAN listener to RAC `remote_listener`) | `@//<cman-ip>:1521/<rac-service>` | RAC services register dynamically with CMAN | [`cman-rac.yaml`](samples/cman-rac.yaml) |
+| **Single RAC — global `next_hop` to SCAN** | File `spec.cman.configSource` | 1 RAC SCAN | **Not required** | `@//<cman-ip>:1521/<service-name>` | RAC does not register with CMAN; CMAN forwards to RAC SCAN | [`cman-rac-nexthop.yaml`](samples/cman-rac-nexthop.yaml) |
+| **CMAN REST API** | Generated `spec.cman.rules[]` + `restApi` | 1+ | Same as generated rules | REST clients use the `rest` Service port | Programmatic CMAN administration in generated mode | [`cman-rest-api.yaml`](samples/cman-rest-api.yaml) |
+
+**Deploy order summary**
+
+| If you choose | Deploy databases first | Deploy CMAN | Then before client connect |
+| --- | --- | --- | --- |
+| Generated rules (single or multiple SIDBs) | Yes — all backends **Healthy** | Yes — wait **Healthy** | Set `remote_listener` + `ALTER SYSTEM REGISTER` on **each** database |
+| Global `next_hop` or service-alias `next_hop` | Yes — all backends **Healthy** | Yes — wait **Healthy** | Connect directly — **no** `remote_listener` |
+| RAC generated rules | Yes — RAC in namespace `rac` | Yes | Update RAC `remote_listener` + `ALTER SYSTEM REGISTER` on each instance |
 
 ## Sample Manifests
 
@@ -146,6 +255,8 @@ The template demonstrates two CMAN replicas and two Oracle Database backends as 
 The two aliases are service-aware backend destinations, not two global `next_hop` blocks. Use a global `next_hop` only when every accepted service must be forwarded to the same Oracle Database listener. The template's inline comments also explain when to use generated rules instead of file mode.
 
 The focused examples under [`samples/`](samples/) use SIDB Services for concrete backend names, but the same CMAN patterns apply to any reachable Oracle Database listener. Replace the backend hosts and service names for the database type being used.
+
+**Prerequisite:** Samples with two or more database backends assume those databases are already deployed. See [Multiple database backends](#multiple-database-backends) for the required Services and service names before applying CMAN.
 
 | File | CMAN replicas | Database backends | Routing pattern |
 | --- | ---: | ---: | --- |
@@ -232,6 +343,38 @@ spec:
 
 Sample file: [`samples/cman-sidb-peer.yaml`](samples/cman-sidb-peer.yaml)
 
+**Prerequisite:** Deploy both `sidb-sample` and `sidb-cman-peer` before applying this manifest. Register `remote_listener` on **each** database **after** CMAN is Healthy (not before CMAN is deployed).
+
+After CMAN is Healthy, register **both** backends (example pod names):
+
+```bash
+# sidb-sample → service apppdb1
+kubectl exec -it -n default <sidb-sample-pod> -- sqlplus / as sysdba
+
+# sidb-cman-peer → service apppdb2
+kubectl exec -it -n default <sidb-cman-peer-pod> -- sqlplus / as sysdba
+```
+
+On **each** database:
+
+```sql
+ALTER SYSTEM SET remote_listener='(ADDRESS=(PROTOCOL=TCP)(HOST=cman-sidb.default.svc.cluster.local)(PORT=1521))' SCOPE=BOTH;
+ALTER SYSTEM REGISTER;
+```
+
+Verify both services appear on CMAN:
+
+```bash
+kubectl exec -n default deploy/cman-sidb -- cmctl show services | grep -E 'apppdb1|apppdb2'
+```
+
+Test:
+
+```bash
+sqlplus 'sys/<password>@//<cman-external-ip>:1521/apppdb1 as sysdba'
+sqlplus 'sys/<password>@//<cman-external-ip>:1521/apppdb2 as sysdba'
+```
+
 ```yaml
 apiVersion: network.oracle.com/v4
 kind: TrafficManager
@@ -285,6 +428,8 @@ spec:
 
 Sample file: [`samples/cman-sidb-default.yaml`](samples/cman-sidb-default.yaml)
 
+**Prerequisite:** Deploy both `sidb-sample` and `sidb-cman-peer` before applying this manifest. Register `remote_listener` on **each** database after CMAN is Healthy.
+
 ```yaml
 apiVersion: network.oracle.com/v4
 kind: TrafficManager
@@ -336,12 +481,30 @@ spec:
 
 Valid rule actions are `accept`, `reject`, and `drop`.
 
-Use generated mode when CMAN should act as a remote listener registration endpoint or when clients use an explicit source-route descriptor. For database registration through CMAN, set each database `remote_listener` to the CMAN listener address appropriate for the topology, for example the CMAN internal Service DNS name for in-cluster registration or the external endpoint if the database must register through that address.
+**Prerequisite:** In generated mode, deploy CMAN first, then register each backend database with CMAN before clients test Easy Connect. Set `remote_listener` and run `ALTER SYSTEM REGISTER` only after the CMAN internal Service exists. Skipping registration produces `ORA-12514` even when the CMAN pod is healthy. Setting `remote_listener` before CMAN is deployed can fail with `ORA-00132` because the CMAN hostname does not resolve yet.
+
+Use generated mode when CMAN should act as a remote listener registration endpoint or when clients use an explicit source-route descriptor. For database registration through CMAN, set each database `remote_listener` to the CMAN **internal** Service DNS name for in-cluster registration.
+
+Recommended order:
+
+1. Apply the TrafficManager manifest and wait until `status.status` is `Healthy`.
+2. Confirm `cman-sidb.<namespace>.svc.cluster.local` resolves from the database pod.
+3. Set `remote_listener` and run `ALTER SYSTEM REGISTER`.
+4. Run `cmctl show services` on the CMAN pod and confirm the PDB service is listed.
+5. Connect with Easy Connect through the CMAN external endpoint.
 
 Example SQL when setting `remote_listener` manually:
 
 ```sql
-alter system set remote_listener='cman-sidb.default.svc.cluster.local:1521' scope=both;
+ALTER SYSTEM SET remote_listener='(ADDRESS=(PROTOCOL=TCP)(HOST=cman-sidb.default.svc.cluster.local)(PORT=1521))' SCOPE=BOTH;
+ALTER SYSTEM REGISTER;
+```
+
+Short form (use only if accepted by your database image):
+
+```sql
+ALTER SYSTEM SET remote_listener='cman-sidb.default.svc.cluster.local:1521' SCOPE=BOTH;
+ALTER SYSTEM REGISTER;
 ```
 
 After `remote_listener` is set and the database has registered with CMAN, clients can use the short Easy Connect form:
@@ -607,6 +770,8 @@ Use service-alias next-hop when one CMAN endpoint must route multiple requested 
 The CMAN image must support extracting embedded `tnsnames.ora` aliases from the mounted `cman.ora`. The alias block is stored as comments so `cman.ora` remains valid CMAN syntax, and the container writes it to `$ORACLE_HOME/network/admin/tnsnames.ora` before starting CMAN.
 
 Sample file: [`samples/cman-sidb-peer-nexthop.yaml`](samples/cman-sidb-peer-nexthop.yaml)
+
+**Prerequisite:** Deploy both `sidb-sample` and `sidb-cman-peer` before applying this manifest. `remote_listener` is not required for this next-hop pattern.
 
 ```yaml
 apiVersion: v1
@@ -1047,6 +1212,8 @@ Useful status fields:
 
 | Symptom | Likely cause | What to check |
 | --- | --- | --- |
+| `ORA-12514` through CMAN with generated rules | Database service not registered on the CMAN listener | Deploy CMAN first, set `remote_listener`, run `ALTER SYSTEM REGISTER`, verify with `cmctl show services`, then connect. Or use [`cman-sidb-nexthop.yaml`](samples/cman-sidb-nexthop.yaml) if you do not want `remote_listener` |
+| `ORA-00132` / `ORA-00141` when setting `remote_listener` | CMAN not deployed yet, or CMAN hostname does not resolve from the database pod | Apply CMAN and wait until Healthy, confirm DNS with `getent hosts cman-sidb.<namespace>.svc.cluster.local` from the database pod, then use the `ADDRESS` form for `remote_listener` |
 | `ORA-12529` from CMAN | Rule `src`, `dst`, or `srv` does not match the client descriptor | For Easy Connect or SYSDBA tests, try `dst=*` and `srv=*` unless you have verified the exact match required |
 | External Service `EXTERNAL-IP` stays `<pending>` | No cloud load-balancer controller, or invalid cloud annotations | Confirm a load-balancer controller is installed. On OCI, verify subnet OCID and NLB annotations. Use `NodePort` or an in-cluster client if no external endpoint is required |
 | `status.status` is not `Ready` | Image pull failure, invalid manifest, or CMAN startup error | Run `kubectl describe trafficmanager <name>` and `kubectl logs deploy/<name>` |
